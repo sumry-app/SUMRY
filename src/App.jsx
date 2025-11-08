@@ -14,13 +14,15 @@ import {
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
   AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
 
 // ========== CORE UTILITIES ==========
 const uid = () => Math.random().toString(36).slice(2, 10);
 const storageKey = "sumry_complete_v1";
+const usersStorageKey = "sumry_users_v1";
+const currentUserKey = "sumry_current_user";
 
 function loadStore() {
   const raw = localStorage.getItem(storageKey);
@@ -223,10 +225,10 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
 
   return (
     <Dialog open={true} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl bg-white/95 backdrop-blur-xl">
+      <DialogContent className="max-w-2xl bg-white/90 backdrop-blur-2xl border-white/40 rounded-3xl shadow-2xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg">
               <Sparkles className="h-6 w-6 text-white" strokeWidth={2}/>
             </div>
             <div>
@@ -283,10 +285,10 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
             />
           </div>
 
-          <div className="p-4 bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200/50 rounded-xl">
+          <div className="p-4 bg-gradient-to-br from-orange-50 to-rose-50 border border-orange-200/50 rounded-2xl">
             <div className="flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" strokeWidth={2}/>
-              <div className="text-sm text-purple-900">
+              <Sparkles className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" strokeWidth={2}/>
+              <div className="text-sm text-orange-900">
                 <strong>Pro Tip:</strong> The AI uses research-based goal templates. You can edit the generated goal before saving.
               </div>
             </div>
@@ -300,7 +302,7 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
           <Button
             onClick={generateGoal}
             disabled={generating || !focusArea || !studentId}
-            className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white shadow-lg shadow-purple-500/30"
+            className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-lg shadow-orange-500/30"
           >
             {generating ? (
               <>
@@ -419,7 +421,7 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
           <div className="space-y-4">
             {!goal && (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowAI(true)} className="flex-1 border-purple-200 text-purple-600 hover:bg-purple-50">
+                <Button variant="outline" onClick={() => setShowAI(true)} className="flex-1 border-orange-200 text-orange-600 hover:bg-orange-50">
                   <Sparkles className="h-4 w-4 mr-2" strokeWidth={2}/>AI Assistant
                 </Button>
                 <Button variant="outline" onClick={() => setShowTemplates(true)} className="flex-1">
@@ -454,7 +456,7 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
               if (!studentId || !description) return;
               onSave({ ...goal, id: goal?.id || uid(), studentId, area, description, baseline, target, metric });
               onClose();
-            }} className="bg-slate-900 hover:bg-slate-800">Save Goal</Button>
+            }}>Save Goal</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -626,7 +628,7 @@ function GoalDetailDialog({ goal, student, logs, store, onClose }) {
           </Card>
         </div>
         <DialogFooter>
-          <Button onClick={onClose} className="bg-slate-900 hover:bg-slate-800">Close</Button>
+          <Button onClick={onClose}>Close</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -686,7 +688,7 @@ function GoalsView({ store, setStore }) {
             {areas.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
           </SelectContent>
         </Select>
-        <Button onClick={() => setEditDialog({})} className="bg-slate-900 hover:bg-slate-800">
+        <Button onClick={() => setEditDialog({})}>
           <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Goal
         </Button>
       </div>
@@ -840,7 +842,7 @@ function ProgressView({ store, setStore }) {
                   rows={3}
                   className="bg-white/80 backdrop-blur-xl border-black/5"
                 />
-                <Button onClick={handleAddLog} className="w-full bg-slate-900 hover:bg-slate-800">
+                <Button onClick={handleAddLog} className="w-full">
                   <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Log Progress
                 </Button>
               </>
@@ -932,7 +934,7 @@ function StudentsView({ store, setStore }) {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-900">Students</h2>
-        <Button onClick={() => setEditDialog({})} className="bg-slate-900 hover:bg-slate-800">
+        <Button onClick={() => setEditDialog({})}>
           <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Student
         </Button>
       </div>
@@ -1019,7 +1021,7 @@ function StudentsView({ store, setStore }) {
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditDialog(null)}>Cancel</Button>
-              <Button onClick={handleSave} className="bg-slate-900 hover:bg-slate-800">Save Student</Button>
+              <Button onClick={handleSave}>Save Student</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -1052,78 +1054,78 @@ function Dashboard({ store }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-blue-500 to-blue-600 text-white border-0">
+        <Card className="bg-gradient-to-br from-teal-400 to-teal-500 text-white border-0 shadow-lg shadow-teal-500/20 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm">Students</p>
+                <p className="text-teal-50 text-sm font-medium">Students</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalStudents}</p>
               </div>
-              <Users className="h-8 w-8 text-blue-100" strokeWidth={2}/>
+              <Users className="h-8 w-8 text-teal-50" strokeWidth={2}/>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-purple-500 to-purple-600 text-white border-0">
+        <Card className="bg-gradient-to-br from-orange-400 to-rose-500 text-white border-0 shadow-lg shadow-orange-500/20 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-purple-100 text-sm">Goals</p>
+                <p className="text-orange-50 text-sm font-medium">Goals</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalGoals}</p>
               </div>
-              <TrendingUp className="h-8 w-8 text-purple-100" strokeWidth={2}/>
+              <TrendingUp className="h-8 w-8 text-orange-50" strokeWidth={2}/>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-green-500 to-green-600 text-white border-0">
+        <Card className="bg-gradient-to-br from-emerald-400 to-teal-500 text-white border-0 shadow-lg shadow-emerald-500/20 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-green-100 text-sm">Progress Logs</p>
+                <p className="text-emerald-50 text-sm font-medium">Progress Logs</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalLogs}</p>
               </div>
-              <BarChart3 className="h-8 w-8 text-green-100" strokeWidth={2}/>
+              <BarChart3 className="h-8 w-8 text-emerald-50" strokeWidth={2}/>
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-500 to-amber-600 text-white border-0">
+        <Card className="bg-gradient-to-br from-amber-400 to-orange-500 text-white border-0 shadow-lg shadow-amber-500/20 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-amber-100 text-sm">On Track</p>
+                <p className="text-amber-50 text-sm font-medium">On Track</p>
                 <p className="text-3xl font-bold mt-1">{stats.onTrackGoals}/{stats.totalGoals}</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-amber-100" strokeWidth={2}/>
+              <CheckCircle className="h-8 w-8 text-amber-50" strokeWidth={2}/>
             </div>
           </CardContent>
         </Card>
       </div>
 
       {store.students.length === 0 && (
-        <Card className="bg-gradient-to-br from-purple-50 to-pink-50 border-purple-200/50">
+        <Card className="bg-gradient-to-br from-orange-50 to-rose-50 border-orange-200/50 rounded-2xl shadow-lg">
           <CardContent className="p-8">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center flex-shrink-0">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center flex-shrink-0 shadow-lg">
                 <Sparkles className="h-6 w-6 text-white" strokeWidth={2}/>
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-purple-900 mb-2">Get Started with SUMRY</h3>
-                <p className="text-purple-700 mb-4">
+                <h3 className="text-lg font-semibold text-orange-900 mb-2">Get Started with SUMRY</h3>
+                <p className="text-orange-800 mb-4">
                   Welcome! Start by adding your first student, then create IEP goals and track progress.
                 </p>
-                <ul className="space-y-2 text-sm text-purple-700">
+                <ul className="space-y-2 text-sm text-orange-700">
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-purple-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
                     Add students in the Students tab
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-purple-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
                     Create goals using AI assistance or templates
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-purple-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
                     Log progress and analyze trends
                   </li>
                 </ul>
@@ -1165,8 +1167,174 @@ function Dashboard({ store }) {
   );
 }
 
+// ========== AUTHENTICATION ==========
+function hashPassword(password) {
+  // Simple hash for demo purposes - in production, use proper encryption
+  let hash = 0;
+  for (let i = 0; i < password.length; i++) {
+    const char = password.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash;
+  }
+  return hash.toString(36);
+}
+
+function loadUsers() {
+  const raw = localStorage.getItem(usersStorageKey);
+  if (!raw) return [];
+  try { return JSON.parse(raw); } catch { return []; }
+}
+
+function saveUsers(users) {
+  localStorage.setItem(usersStorageKey, JSON.stringify(users));
+}
+
+function getCurrentUser() {
+  const raw = localStorage.getItem(currentUserKey);
+  if (!raw) return null;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
+function setCurrentUser(user) {
+  if (user) {
+    localStorage.setItem(currentUserKey, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(currentUserKey);
+  }
+}
+
+function LoginPage({ onLogin }) {
+  const [isSignup, setIsSignup] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [error, setError] = useState("");
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    setError("");
+
+    if (!email || !password || (isSignup && !name)) {
+      setError("Please fill in all fields");
+      return;
+    }
+
+    const users = loadUsers();
+
+    if (isSignup) {
+      // Check if user already exists
+      if (users.find(u => u.email === email)) {
+        setError("Email already registered");
+        return;
+      }
+
+      // Create new user
+      const newUser = {
+        id: uid(),
+        email,
+        name,
+        passwordHash: hashPassword(password),
+        createdAt: new Date().toISOString()
+      };
+
+      users.push(newUser);
+      saveUsers(users);
+      setCurrentUser(newUser);
+      onLogin(newUser);
+    } else {
+      // Login
+      const user = users.find(u => u.email === email);
+      if (!user || user.passwordHash !== hashPassword(password)) {
+        setError("Invalid email or password");
+        return;
+      }
+
+      setCurrentUser(user);
+      onLogin(user);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-amber-50/30 via-orange-50/20 to-rose-50/30 flex items-center justify-center p-4">
+      <Card className="w-full max-w-md bg-white/90 backdrop-blur-2xl border-white/40 rounded-3xl shadow-2xl">
+        <CardContent className="p-8">
+          <div className="flex items-center justify-center mb-8">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg">
+              <Award className="h-10 w-10 text-white" strokeWidth={2}/>
+            </div>
+          </div>
+
+          <h1 className="text-3xl font-bold text-center text-slate-900 mb-2">SUMRY</h1>
+          <p className="text-center text-slate-600 mb-8">IEP Management System</p>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {isSignup && (
+              <div>
+                <Label>Name</Label>
+                <Input
+                  type="text"
+                  placeholder="Your name"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
+                />
+              </div>
+            )}
+
+            <div>
+              <Label>Email</Label>
+              <Input
+                type="email"
+                placeholder="your@email.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
+              />
+            </div>
+
+            <div>
+              <Label>Password</Label>
+              <Input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
+              />
+            </div>
+
+            {error && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
+
+            <Button type="submit" className="w-full">
+              {isSignup ? "Create Account" : "Sign In"}
+            </Button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignup(!isSignup);
+                  setError("");
+                }}
+                className="text-sm text-slate-600 hover:text-slate-900"
+              >
+                {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
+              </button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 // ========== MAIN APP ==========
 export default function App() {
+  const [currentUser, setCurrentUser] = useState(getCurrentUser);
   const [store, setStore] = useState(loadStore);
   const [activeTab, setActiveTab] = useState("dashboard");
 
@@ -1191,15 +1359,25 @@ export default function App() {
     reader.readAsText(file);
   };
 
+  const handleLogout = () => {
+    setCurrentUser(null);
+    localStorage.removeItem(currentUserKey);
+  };
+
+  // Show login page if not authenticated
+  if (!currentUser) {
+    return <LoginPage onLogin={setCurrentUser} />;
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50/30 via-orange-50/20 to-rose-50/30">
       <OfflineIndicator />
 
-      <div className="border-b bg-white/80 backdrop-blur-xl border-black/5 sticky top-0 z-40 shadow-sm">
+      <div className="border-b bg-white/60 backdrop-blur-xl border-white/20 sticky top-0 z-40 shadow-lg shadow-black/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-coral-500 to-rose-500 flex items-center justify-center shadow-lg">
                 <Award className="h-6 w-6 text-white" strokeWidth={2}/>
               </div>
               <div>
@@ -1209,13 +1387,23 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => exportJSON(store)} size="sm" className="border-slate-200">
+              <Button variant="outline" onClick={() => exportJSON(store)} size="sm" className="border-slate-200 rounded-xl">
                 <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Export
               </Button>
-              <Button variant="outline" size="sm" className="border-slate-200" onClick={() => document.getElementById('import-input')?.click()}>
+              <Button variant="outline" size="sm" className="border-slate-200 rounded-xl" onClick={() => document.getElementById('import-input')?.click()}>
                 <Upload className="h-4 w-4 mr-2" strokeWidth={2}/>Import
               </Button>
               <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
+
+              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40">
+                  <User className="h-4 w-4 text-slate-600" strokeWidth={2}/>
+                  <span className="text-sm font-medium text-slate-700">{currentUser.name}</span>
+                </div>
+                <Button variant="outline" size="sm" onClick={handleLogout} className="border-slate-200 rounded-xl">
+                  <LogOut className="h-4 w-4 mr-2" strokeWidth={2}/>Logout
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -1223,17 +1411,17 @@ export default function App() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-white/80 backdrop-blur-xl border border-black/5 p-1 shadow-sm">
-            <TabsTrigger value="dashboard">
+          <TabsList className="bg-white/60 backdrop-blur-xl border border-white/40 p-1.5 shadow-lg shadow-black/5 rounded-2xl">
+            <TabsTrigger value="dashboard" className="rounded-xl">
               <BarChart3 className="h-4 w-4 mr-2" strokeWidth={2}/>Dashboard
             </TabsTrigger>
-            <TabsTrigger value="students">
+            <TabsTrigger value="students" className="rounded-xl">
               <Users className="h-4 w-4 mr-2" strokeWidth={2}/>Students
             </TabsTrigger>
-            <TabsTrigger value="goals">
+            <TabsTrigger value="goals" className="rounded-xl">
               <TrendingUp className="h-4 w-4 mr-2" strokeWidth={2}/>Goals
             </TabsTrigger>
-            <TabsTrigger value="progress">
+            <TabsTrigger value="progress" className="rounded-xl">
               <Calendar className="h-4 w-4 mr-2" strokeWidth={2}/>Progress
             </TabsTrigger>
           </TabsList>
