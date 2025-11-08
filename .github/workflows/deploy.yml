@@ -3,7 +3,7 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches:
-      - claude/incomplete-request-011CUpkRGdug8g1LRwHBna6j
+      - main
 
 permissions:
   contents: read
