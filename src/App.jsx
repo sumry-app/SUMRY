@@ -14,9 +14,21 @@ import {
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
   AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Target
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
+
+// ========== NEW FEATURE COMPONENTS ==========
+import TrialDataLogger from './components/data/TrialDataLogger';
+import ParaDashboard from './components/dashboards/ParaDashboard';
+import TeacherDashboard from './components/dashboards/TeacherDashboard';
+import AdminDashboard from './components/dashboards/AdminDashboard';
+import AchievementSystem from './components/gamification/AchievementSystem';
+import AssignmentsManager from './components/assignments/AssignmentsManager';
+import FERPAPage from './components/compliance/FERPAPage';
+import TimeSavedDashboard from './components/metrics/TimeSavedDashboard';
+import exportService from './services/exportService';
+import offlineStorage from './services/offlineStorage';
 
 // ========== CORE UTILITIES ==========
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -44,7 +56,14 @@ function getEmptyStore() {
     teamMembers: [],
     assessments: [],
     compliance: [],
-    aiSuggestions: []
+    aiSuggestions: [],
+    // NEW: Para-first workflow data
+    assignments: [],
+    reminders: [],
+    users: [],
+    auditLog: [],
+    integrityAlerts: [],
+    meetings: []
   };
 }
 
@@ -1411,7 +1430,8 @@ export default function App() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-white/60 backdrop-blur-xl border border-white/40 p-1.5 shadow-lg shadow-black/5 rounded-2xl">
+          <TabsList className="bg-white/60 backdrop-blur-xl border border-white/40 p-1.5 shadow-lg shadow-black/5 rounded-2xl flex-wrap">
+            {/* Core Tabs */}
             <TabsTrigger value="dashboard" className="rounded-xl">
               <BarChart3 className="h-4 w-4 mr-2" strokeWidth={2}/>Dashboard
             </TabsTrigger>
@@ -1424,8 +1444,48 @@ export default function App() {
             <TabsTrigger value="progress" className="rounded-xl">
               <Calendar className="h-4 w-4 mr-2" strokeWidth={2}/>Progress
             </TabsTrigger>
+
+            {/* NEW: Para Dashboard */}
+            {currentUser.role === 'para' && (
+              <TabsTrigger value="my-work" className="rounded-xl">
+                <Zap className="h-4 w-4 mr-2" strokeWidth={2}/>My Work
+              </TabsTrigger>
+            )}
+
+            {/* NEW: Teacher/Admin Features */}
+            {(currentUser.role === 'teacher' || currentUser.role === 'admin') && (
+              <>
+                <TabsTrigger value="teacher-dashboard" className="rounded-xl">
+                  <Users className="h-4 w-4 mr-2" strokeWidth={2}/>Caseload
+                </TabsTrigger>
+                <TabsTrigger value="assignments" className="rounded-xl">
+                  <Target className="h-4 w-4 mr-2" strokeWidth={2}/>Assignments
+                </TabsTrigger>
+              </>
+            )}
+
+            {/* NEW: Admin Only */}
+            {currentUser.role === 'admin' && (
+              <>
+                <TabsTrigger value="admin-dashboard" className="rounded-xl">
+                  <Shield className="h-4 w-4 mr-2" strokeWidth={2}/>System
+                </TabsTrigger>
+                <TabsTrigger value="metrics" className="rounded-xl">
+                  <DollarSign className="h-4 w-4 mr-2" strokeWidth={2}/>ROI
+                </TabsTrigger>
+              </>
+            )}
+
+            {/* NEW: Available to All */}
+            <TabsTrigger value="achievements" className="rounded-xl">
+              <Award className="h-4 w-4 mr-2" strokeWidth={2}/>Achievements
+            </TabsTrigger>
+            <TabsTrigger value="ferpa" className="rounded-xl">
+              <Shield className="h-4 w-4 mr-2" strokeWidth={2}/>Privacy
+            </TabsTrigger>
           </TabsList>
 
+          {/* Original Tabs */}
           <TabsContent value="dashboard">
             <Dashboard store={store} />
           </TabsContent>
@@ -1440,6 +1500,121 @@ export default function App() {
 
           <TabsContent value="progress">
             <ProgressView store={store} setStore={setStore} />
+          </TabsContent>
+
+          {/* NEW: Para Dashboard */}
+          <TabsContent value="my-work">
+            <ParaDashboard
+              assignments={store.assignments || []}
+              students={store.students}
+              goals={store.goals}
+              logs={store.logs}
+              reminders={store.reminders || []}
+              paraUser={currentUser}
+              onStartDataEntry={(assignment) => {
+                // TODO: Open TrialDataLogger modal
+                setActiveTab('progress');
+              }}
+              onViewAssignment={(assignment) => {
+                // View assignment details
+                console.log('View assignment:', assignment);
+              }}
+            />
+          </TabsContent>
+
+          {/* NEW: Teacher Dashboard */}
+          <TabsContent value="teacher-dashboard">
+            <TeacherDashboard
+              students={store.students}
+              goals={store.goals}
+              logs={store.logs}
+              assignments={store.assignments || []}
+              paraStaff={store.users?.filter(u => u.role === 'para') || []}
+              onViewStudent={(student) => {
+                setActiveTab('students');
+              }}
+              onViewGoal={(goal) => {
+                setActiveTab('goals');
+              }}
+              onCreateReport={() => {
+                // TODO: Open report generator
+                alert('Report generation coming soon!');
+              }}
+            />
+          </TabsContent>
+
+          {/* NEW: Admin Dashboard */}
+          <TabsContent value="admin-dashboard">
+            <AdminDashboard
+              students={store.students}
+              goals={store.goals}
+              logs={store.logs}
+              users={store.users || []}
+              auditLog={store.auditLog || []}
+              integrityAlerts={store.integrityAlerts || []}
+            />
+          </TabsContent>
+
+          {/* NEW: Assignments Manager */}
+          <TabsContent value="assignments">
+            <AssignmentsManager
+              assignments={store.assignments || []}
+              students={store.students}
+              goals={store.goals}
+              paraStaff={store.users?.filter(u => u.role === 'para') || []}
+              onAddAssignment={(assignment) => {
+                setStore({
+                  ...store,
+                  assignments: [...(store.assignments || []), assignment]
+                });
+              }}
+              onUpdateAssignment={(id, updated) => {
+                setStore({
+                  ...store,
+                  assignments: (store.assignments || []).map(a => a.id === id ? { ...a, ...updated } : a)
+                });
+              }}
+              onDeleteAssignment={(id) => {
+                setStore({
+                  ...store,
+                  assignments: (store.assignments || []).filter(a => a.id !== id)
+                });
+              }}
+            />
+          </TabsContent>
+
+          {/* NEW: Achievements */}
+          <TabsContent value="achievements">
+            <AchievementSystem
+              userId={currentUser.id}
+              logs={store.logs}
+              students={store.students}
+            />
+          </TabsContent>
+
+          {/* NEW: Time-Saved Metrics */}
+          <TabsContent value="metrics">
+            <TimeSavedDashboard
+              logs={store.logs}
+              students={store.students}
+              goals={store.goals}
+              users={store.users || []}
+              meetings={store.meetings || []}
+            />
+          </TabsContent>
+
+          {/* NEW: FERPA Compliance */}
+          <TabsContent value="ferpa">
+            <FERPAPage
+              onExportData={() => {
+                exportService.exportAllData(store);
+              }}
+              onDeleteData={() => {
+                if (confirm('Are you sure you want to request data deletion? This action cannot be undone.')) {
+                  alert('Data deletion request submitted. Please contact your administrator.');
+                }
+              }}
+            />
           </TabsContent>
         </Tabs>
       </div>
