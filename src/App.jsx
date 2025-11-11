@@ -30,6 +30,11 @@ import TimeSavedDashboard from './components/metrics/TimeSavedDashboard';
 import exportService from './services/exportService';
 import offlineStorage from './services/offlineStorage';
 
+// ========== NEW DESIGN SYSTEM COMPONENTS ==========
+import SmartNavigation, { useSmartNavigation } from './components/smart/SmartNavigation';
+import SmartCommandPalette, { useCommandPalette } from './components/smart/SmartCommandPalette';
+import EnhancedDashboard from './components/enhanced/EnhancedDashboard';
+
 // ========== CORE UTILITIES ==========
 const uid = () => Math.random().toString(36).slice(2, 10);
 const storageKey = "sumry_complete_v1";
@@ -1357,6 +1362,9 @@ export default function App() {
   const [store, setStore] = useState(loadStore);
   const [activeTab, setActiveTab] = useState("dashboard");
 
+  // NEW: Command Palette & Navigation hooks
+  const commandPalette = useCommandPalette();
+
   useEffect(() => {
     saveStore(store);
   }, [store]);
@@ -1487,7 +1495,13 @@ export default function App() {
 
           {/* Original Tabs */}
           <TabsContent value="dashboard">
-            <Dashboard store={store} />
+            <EnhancedDashboard
+              students={store.students}
+              goals={store.goals}
+              logs={store.logs}
+              user={currentUser}
+              onNavigate={setActiveTab}
+            />
           </TabsContent>
 
           <TabsContent value="students">
@@ -1618,6 +1632,40 @@ export default function App() {
           </TabsContent>
         </Tabs>
       </div>
+
+      {/* NEW: Smart Command Palette (Cmd+K) */}
+      <SmartCommandPalette
+        isOpen={commandPalette.isOpen}
+        onClose={commandPalette.close}
+        context={{
+          currentView: activeTab,
+          selectedStudent: null,
+          lastLoggedToday: store.logs.some(log =>
+            new Date(log.dateISO).toDateString() === new Date().toDateString()
+          )
+        }}
+        recentActions={[]}
+        onExecute={(command) => {
+          if (command.type === 'navigate') {
+            setActiveTab(command.to);
+          } else if (command.id?.startsWith('nav-')) {
+            const tab = command.id.replace('nav-', '');
+            setActiveTab(tab);
+          } else if (command.id === 'add-student') {
+            setActiveTab('students');
+          } else if (command.id === 'add-goal') {
+            setActiveTab('goals');
+          } else if (command.id === 'log-progress') {
+            setActiveTab('progress');
+          } else if (command.id === 'export-data') {
+            exportJSON(store);
+          } else if (command.id === 'achievements') {
+            setActiveTab('achievements');
+          } else if (command.id === 'ferpa') {
+            setActiveTab('ferpa');
+          }
+        }}
+      />
     </div>
   );
 }
