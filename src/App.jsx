@@ -14,7 +14,7 @@ import {
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
   AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
 
@@ -23,37 +23,157 @@ const uid = () => Math.random().toString(36).slice(2, 10);
 const storageKey = "sumry_complete_v1";
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
+const STORE_VERSION = 1;
+const STORE_ARRAY_KEYS = [
+  "students",
+  "goals",
+  "logs",
+  "schedules",
+  "accommodations",
+  "behaviorLogs",
+  "presentLevels",
+  "serviceLogs",
+  "parentAccounts",
+  "teamMembers",
+  "assessments",
+  "compliance",
+  "aiSuggestions"
+];
+
+const createTimestamp = () => new Date().toISOString();
+const dateTimeFormatter = typeof Intl !== "undefined"
+  ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })
+  : null;
+
+function formatTimestamp(isoString) {
+  if (!isoString || !dateTimeFormatter) return "";
+  try {
+    return dateTimeFormatter.format(new Date(isoString));
+  } catch {
+    return "";
+  }
+}
+
+function ensureArray(value, expectObjects = true) {
+  if (!Array.isArray(value)) return [];
+  if (!expectObjects) {
+    return value.filter(item => item !== null && item !== undefined);
+  }
+  return value.filter(item => item && typeof item === "object");
+}
+
+function dedupeById(list) {
+  const seen = new Map();
+  list.forEach(item => {
+    if (item?.id && !seen.has(item.id)) {
+      seen.set(item.id, item);
+    }
+  });
+  return Array.from(seen.values());
+}
+
+function getEmptyStore() {
+  const base = {
+    version: STORE_VERSION,
+    lastUpdated: createTimestamp()
+  };
+  STORE_ARRAY_KEYS.forEach(key => {
+    base[key] = [];
+  });
+  return base;
+}
+
+function normalizeStoreData(raw) {
+  if (!raw || typeof raw !== "object") {
+    return getEmptyStore();
+  }
+
+  const normalized = getEmptyStore();
+  normalized.version = typeof raw.version === "number" ? raw.version : STORE_VERSION;
+  normalized.lastUpdated = typeof raw.lastUpdated === "string" ? raw.lastUpdated : createTimestamp();
+
+  normalized.students = dedupeById(
+    ensureArray(raw.students).map(student => ({
+      id: typeof student.id === "string" ? student.id : uid(),
+      name: typeof student.name === "string" && student.name.trim() ? student.name.trim() : "Unnamed Student",
+      grade: typeof student.grade === "string" ? student.grade.trim() : "",
+      disability: typeof student.disability === "string" ? student.disability.trim() : "",
+      createdAt: typeof student.createdAt === "string" ? student.createdAt : normalized.lastUpdated
+    }))
+  );
+
+  const studentIds = new Set(normalized.students.map(s => s.id));
+
+  normalized.goals = dedupeById(
+    ensureArray(raw.goals).map(goal => {
+      const studentId = typeof goal.studentId === "string" && studentIds.has(goal.studentId)
+        ? goal.studentId
+        : null;
+
+      if (!studentId) return null;
+
+      return {
+        id: typeof goal.id === "string" ? goal.id : uid(),
+        studentId,
+        area: typeof goal.area === "string" ? goal.area.trim() || "General" : "General",
+        description: typeof goal.description === "string" ? goal.description.trim() : "",
+        baseline: typeof goal.baseline === "string" ? goal.baseline.trim() : "",
+        target: typeof goal.target === "string" ? goal.target.trim() : "",
+        metric: typeof goal.metric === "string" && goal.metric.trim() ? goal.metric.trim() : "",
+        createdAt: typeof goal.createdAt === "string" ? goal.createdAt : normalized.lastUpdated,
+        aiGenerated: Boolean(goal.aiGenerated)
+      };
+    }).filter(Boolean)
+  );
+
+  const goalIds = new Set(normalized.goals.map(g => g.id));
+
+  normalized.logs = dedupeById(
+    ensureArray(raw.logs).map(log => {
+      const goalId = typeof log.goalId === "string" && goalIds.has(log.goalId) ? log.goalId : null;
+      if (!goalId) return null;
+
+      const dateISO = typeof log.dateISO === "string" && /\d{4}-\d{2}-\d{2}/.test(log.dateISO)
+        ? log.dateISO.slice(0, 10)
+        : createTimestamp().slice(0, 10);
+
+      return {
+        id: typeof log.id === "string" ? log.id : uid(),
+        goalId,
+        dateISO,
+        score: typeof log.score === "string" || typeof log.score === "number" ? String(log.score).trim() : "",
+        notes: typeof log.notes === "string" ? log.notes.trim() : "",
+        accommodationsUsed: ensureArray(log.accommodationsUsed).map(item => String(item).trim()).filter(Boolean),
+        evidence: typeof log.evidence === "string" ? log.evidence : undefined
+      };
+    }).filter(Boolean)
+  );
+
+  STORE_ARRAY_KEYS.forEach(key => {
+    if (key === "students" || key === "goals" || key === "logs") return;
+    normalized[key] = ensureArray(raw[key], false);
+  });
+
+  return normalized;
+}
 
 function loadStore() {
   const raw = localStorage.getItem(storageKey);
   if (!raw) return getEmptyStore();
-  try { return JSON.parse(raw); } catch { return getEmptyStore(); }
-}
-
-function getEmptyStore() {
-  return {
-    students: [],
-    goals: [],
-    logs: [],
-    schedules: [],
-    accommodations: [],
-    behaviorLogs: [],
-    presentLevels: [],
-    serviceLogs: [],
-    parentAccounts: [],
-    teamMembers: [],
-    assessments: [],
-    compliance: [],
-    aiSuggestions: []
-  };
+  try {
+    return normalizeStoreData(JSON.parse(raw));
+  } catch {
+    return getEmptyStore();
+  }
 }
 
 function saveStore(store) {
-  localStorage.setItem(storageKey, JSON.stringify(store));
+  localStorage.setItem(storageKey, JSON.stringify(normalizeStoreData(store)));
 }
 
 function exportJSON(store) {
-  const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" });
+  const safeStore = normalizeStoreData(store);
+  const blob = new Blob([JSON.stringify(safeStore, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -453,8 +573,21 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
             <Button onClick={() => {
-              if (!studentId || !description) return;
-              onSave({ ...goal, id: goal?.id || uid(), studentId, area, description, baseline, target, metric });
+              const trimmedDescription = description.trim();
+              const trimmedBaseline = baseline.trim();
+              const trimmedTarget = target.trim();
+              const trimmedMetric = metric.trim();
+              if (!studentId || !trimmedDescription) return;
+              onSave({
+                ...goal,
+                id: goal?.id || uid(),
+                studentId,
+                area,
+                description: trimmedDescription,
+                baseline: trimmedBaseline,
+                target: trimmedTarget,
+                metric: trimmedMetric
+              });
               onClose();
             }}>Save Goal</Button>
           </DialogFooter>
@@ -640,14 +773,33 @@ function GoalsView({ store, setStore }) {
   const [areaFilter, setAreaFilter] = useState("all");
   const [editDialog, setEditDialog] = useState(null);
   const [detailsDialog, setDetailsDialog] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const studentLookup = useMemo(() => {
+    const map = new Map();
+    store.students.forEach(student => {
+      map.set(student.id, student.name);
+    });
+    return map;
+  }, [store.students]);
 
   const filtered = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
     return store.goals.filter(g => {
       if (studentFilter !== "all" && g.studentId !== studentFilter) return false;
       if (areaFilter !== "all" && g.area !== areaFilter) return false;
+      if (query) {
+        const haystack = [
+          g.description,
+          g.area,
+          studentLookup.get(g.studentId) || "",
+          g.metric
+        ].map(value => (value || "").toLowerCase()).join(" ");
+        if (!haystack.includes(query)) return false;
+      }
       return true;
     });
-  }, [store.goals, studentFilter, areaFilter]);
+  }, [store.goals, studentFilter, areaFilter, searchTerm, studentLookup]);
 
   const areas = useMemo(() =>
     [...new Set(store.goals.map(g => g.area))],
@@ -655,17 +807,25 @@ function GoalsView({ store, setStore }) {
   );
 
   const handleSave = useCallback((goal) => {
+    const now = createTimestamp();
+    const goalWithTimestamps = {
+      ...goal,
+      createdAt: goal.createdAt || now
+    };
+
     setStore(prev => ({
       ...prev,
-      goals: prev.goals.find(g => g.id === goal.id)
-        ? prev.goals.map(g => g.id === goal.id ? goal : g)
-        : [goal, ...prev.goals]
+      lastUpdated: now,
+      goals: prev.goals.find(g => g.id === goalWithTimestamps.id)
+        ? prev.goals.map(g => g.id === goalWithTimestamps.id ? goalWithTimestamps : g)
+        : [goalWithTimestamps, ...prev.goals]
     }));
   }, [setStore]);
 
   const handleDelete = useCallback((id) => {
     setStore(prev => ({
       ...prev,
+      lastUpdated: createTimestamp(),
       goals: prev.goals.filter(g => g.id !== id),
       logs: prev.logs.filter(l => l.goalId !== id)
     }));
@@ -688,6 +848,15 @@ function GoalsView({ store, setStore }) {
             {areas.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
           </SelectContent>
         </Select>
+        <div className="relative w-full md:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" strokeWidth={2} />
+          <Input
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Search goals..."
+            className="pl-9 bg-white/80 backdrop-blur-xl border-black/5"
+          />
+        </div>
         <Button onClick={() => setEditDialog({})}>
           <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Goal
         </Button>
@@ -696,7 +865,9 @@ function GoalsView({ store, setStore }) {
       {filtered.length === 0 ? (
         <Card className="bg-white/80 backdrop-blur-xl border-black/5"><CardContent className="p-12 text-center">
           <TrendingUp className="h-12 w-12 mx-auto mb-3 text-slate-300" strokeWidth={2}/>
-          <p className="text-slate-500 font-medium">No goals yet</p>
+          <p className="text-slate-500 font-medium">
+            {store.goals.length === 0 ? "No goals yet" : "No goals match your filters"}
+          </p>
         </CardContent></Card>
       ) : (
         <div className="space-y-3">
@@ -776,21 +947,51 @@ function ProgressView({ store, setStore }) {
   const [notes, setNotes] = useState("");
 
   const filteredGoals = goalFilter === "all" ? store.goals : store.goals.filter(g => g.id === goalFilter);
+  const goalLookup = useMemo(() => new Map(store.goals.map(goal => [goal.id, goal])), [store.goals]);
+  const studentLookup = useMemo(() => new Map(store.students.map(student => [student.id, student])), [store.students]);
+  const logsForExport = useMemo(() => goalFilter === "all" ? store.logs : store.logs.filter(log => log.goalId === goalFilter), [store.logs, goalFilter]);
+
+  const exportLogsToCSV = useCallback(() => {
+    if (logsForExport.length === 0) {
+      alert('No logs to export for the current filters.');
+      return;
+    }
+
+    const header = ["Date", "Student", "Goal", "Area", "Score", "Metric", "Notes", "Accommodations"];
+    const rows = logsForExport.map(log => {
+      const goal = goalLookup.get(log.goalId);
+      const student = goal ? studentLookup.get(goal.studentId) : undefined;
+      return [
+        log.dateISO,
+        student?.name || "",
+        goal?.description || "",
+        goal?.area || "",
+        log.score,
+        goal?.metric || "",
+        log.notes || "",
+        (log.accommodationsUsed || []).join("; ")
+      ];
+    });
+
+    exportCSV([header, ...rows], `progress-logs-${goalFilter === 'all' ? 'all' : goalFilter}.csv`);
+  }, [goalFilter, goalLookup, logsForExport, studentLookup]);
 
   const handleAddLog = () => {
-    if (goalFilter === "all" || !score) return;
+    const trimmedScore = score.trim();
+    if (goalFilter === "all" || !trimmedScore) return;
 
     const newLog = {
       id: uid(),
       goalId: goalFilter,
       dateISO,
-      score,
-      notes,
+      score: trimmedScore,
+      notes: notes.trim(),
       accommodationsUsed: []
     };
 
     setStore(prev => ({
       ...prev,
+      lastUpdated: createTimestamp(),
       logs: [newLog, ...prev.logs]
     }));
 
@@ -802,7 +1003,12 @@ function ProgressView({ store, setStore }) {
     <div className="space-y-6">
       <Card className="bg-white/80 backdrop-blur-xl border-black/5">
         <CardContent className="p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Log Progress</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 className="text-lg font-semibold text-slate-900">Log Progress</h3>
+            <Button variant="outline" size="sm" onClick={exportLogsToCSV} className="border-slate-200">
+              <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Export Logs
+            </Button>
+          </div>
           <div className="space-y-4">
             <Select value={goalFilter} onValueChange={setGoalFilter}>
               <SelectTrigger className="bg-white/80 backdrop-blur-xl border-black/5">
@@ -895,19 +1101,43 @@ function StudentsView({ store, setStore }) {
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
   const [disability, setDisability] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredStudents = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    const sorted = [...store.students].sort((a, b) => a.name.localeCompare(b.name));
+    if (!query) return sorted;
+    return sorted.filter(student => {
+      const haystack = [student.name, student.grade, student.disability]
+        .map(value => (value || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(query);
+    });
+  }, [store.students, searchTerm]);
 
   const handleSave = () => {
-    if (!name) return;
+    const trimmedName = name.trim();
+    const trimmedGrade = grade.trim();
+    const trimmedDisability = disability.trim();
+    if (!trimmedName) return;
 
     if (editDialog?.id) {
       setStore(prev => ({
         ...prev,
-        students: prev.students.map(s => s.id === editDialog.id ? { ...s, name, grade, disability } : s)
+        lastUpdated: createTimestamp(),
+        students: prev.students.map(s => s.id === editDialog.id ? {
+          ...s,
+          name: trimmedName,
+          grade: trimmedGrade,
+          disability: trimmedDisability
+        } : s)
       }));
     } else {
-      const newStudent = { id: uid(), name, grade, disability };
+      const now = createTimestamp();
+      const newStudent = { id: uid(), name: trimmedName, grade: trimmedGrade, disability: trimmedDisability, createdAt: now };
       setStore(prev => ({
         ...prev,
+        lastUpdated: now,
         students: [newStudent, ...prev.students]
       }));
     }
@@ -921,6 +1151,7 @@ function StudentsView({ store, setStore }) {
   const handleDelete = (id) => {
     setStore(prev => ({
       ...prev,
+      lastUpdated: createTimestamp(),
       students: prev.students.filter(s => s.id !== id),
       goals: prev.goals.filter(g => g.studentId !== id),
       logs: prev.logs.filter(l => {
@@ -932,23 +1163,36 @@ function StudentsView({ store, setStore }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold text-slate-900">Students</h2>
-        <Button onClick={() => setEditDialog({})}>
-          <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Student
-        </Button>
+        <div className="flex flex-1 md:flex-initial items-center gap-2 justify-end">
+          <div className="relative w-full max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" strokeWidth={2} />
+            <Input
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search students..."
+              className="pl-9 bg-white/80 backdrop-blur-xl border-black/5"
+            />
+          </div>
+          <Button onClick={() => setEditDialog({})}>
+            <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Student
+          </Button>
+        </div>
       </div>
 
-      {store.students.length === 0 ? (
+      {filteredStudents.length === 0 ? (
         <Card className="bg-white/80 backdrop-blur-xl border-black/5">
           <CardContent className="p-12 text-center">
             <Users className="h-12 w-12 mx-auto mb-3 text-slate-300" strokeWidth={2}/>
-            <p className="text-slate-500 font-medium">No students yet</p>
+            <p className="text-slate-500 font-medium">
+              {store.students.length === 0 ? "No students yet" : "No students match your filters"}
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {store.students.map(student => {
+          {filteredStudents.map(student => {
             const goalsCount = store.goals.filter(g => g.studentId === student.id).length;
 
             return (
@@ -1350,13 +1594,16 @@ export default function App() {
     reader.onload = (evt) => {
       try {
         const imported = JSON.parse(evt.target?.result);
-        setStore(imported);
+        const normalized = normalizeStoreData(imported);
+        const stamped = { ...normalized, lastUpdated: createTimestamp() };
+        setStore(stamped);
         alert('Data imported successfully!');
       } catch (err) {
         alert('Error importing file');
       }
     };
     reader.readAsText(file);
+    e.target.value = "";
   };
 
   const handleLogout = () => {
@@ -1394,6 +1641,13 @@ export default function App() {
                 <Upload className="h-4 w-4 mr-2" strokeWidth={2}/>Import
               </Button>
               <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
+
+              {store.lastUpdated && (
+                <div className="hidden lg:flex flex-col text-right text-xs px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40 text-slate-500">
+                  <span className="uppercase tracking-wide text-[10px] text-slate-400">Last updated</span>
+                  <span className="text-slate-600 font-medium">{formatTimestamp(store.lastUpdated)}</span>
+                </div>
+              )}
 
               <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40">
