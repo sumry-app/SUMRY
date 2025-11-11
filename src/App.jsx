@@ -14,116 +14,24 @@ import {
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
   AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
+import {
+  uid,
+  createTimestamp,
+  formatTimestamp,
+  normalizeStoreData,
+  exportJSON,
+  exportCSV,
+  parseScore,
+  calculateTrendline,
+  getProgressStatus
+} from "@/lib/data";
+import { usePersistentStore } from "@/hooks/usePersistentStore";
 
-// ========== CORE UTILITIES ==========
-const uid = () => Math.random().toString(36).slice(2, 10);
-const storageKey = "sumry_complete_v1";
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
-
-function loadStore() {
-  const raw = localStorage.getItem(storageKey);
-  if (!raw) return getEmptyStore();
-  try { return JSON.parse(raw); } catch { return getEmptyStore(); }
-}
-
-function getEmptyStore() {
-  return {
-    students: [],
-    goals: [],
-    logs: [],
-    schedules: [],
-    accommodations: [],
-    behaviorLogs: [],
-    presentLevels: [],
-    serviceLogs: [],
-    parentAccounts: [],
-    teamMembers: [],
-    assessments: [],
-    compliance: [],
-    aiSuggestions: []
-  };
-}
-
-function saveStore(store) {
-  localStorage.setItem(storageKey, JSON.stringify(store));
-}
-
-function exportJSON(store) {
-  const blob = new Blob([JSON.stringify(store, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `sumry-complete-${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function exportCSV(rows, filename) {
-  const csv = rows.map(r => r.map(s => `"${String(s ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function parseScore(score) {
-  const num = parseFloat(score);
-  return isNaN(num) ? null : num;
-}
-
-function calculateTrendline(data) {
-  if (data.length < 2) return null;
-  const points = data.map((d, i) => ({ x: i, y: parseScore(d.score) })).filter(p => p.y !== null);
-  if (points.length < 2) return null;
-
-  const n = points.length;
-  const sumX = points.reduce((a, p) => a + p.x, 0);
-  const sumY = points.reduce((a, p) => a + p.y, 0);
-  const sumXY = points.reduce((a, p) => a + p.x * p.y, 0);
-  const sumX2 = points.reduce((a, p) => a + p.x * p.x, 0);
-
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-
-  return { slope, intercept };
-}
-
-function predictProgress(logs, target, baseline) {
-  const sorted = [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  const trendline = calculateTrendline(sorted);
-  if (!trendline) return null;
-
-  const projectedNext = trendline.slope * sorted.length + trendline.intercept;
-  const targetNum = parseScore(target);
-  const baselineNum = parseScore(baseline);
-  if (targetNum === null || baselineNum === null) return null;
-
-  const onTrack = projectedNext >= targetNum * 0.8;
-  return {
-    projected: projectedNext.toFixed(1),
-    onTrack,
-    trend: trendline.slope > 0 ? 'improving' : trendline.slope < 0 ? 'declining' : 'stable'
-  };
-}
-
-function getProgressStatus(logs, baseline, target) {
-  if (logs.length < 3) return { status: 'insufficient', color: 'gray', label: 'Need more data' };
-  const prediction = predictProgress(logs, target, baseline);
-  if (!prediction) return { status: 'insufficient', color: 'gray', label: 'Need more data' };
-
-  if (prediction.onTrack) {
-    return { status: 'on-track', color: 'green', label: 'On track' };
-  } else {
-    return { status: 'off-track', color: 'red', label: 'Off track - IEP team review needed' };
-  }
-}
 
 // ========== SHARED COMPONENTS ==========
 function ConfirmButton({ onConfirm, children, variant, size = "sm" }) {
@@ -158,8 +66,8 @@ function OfflineIndicator() {
 
   return (
     <div className="fixed bottom-4 left-4 z-50 animate-in slide-in-from-bottom-5">
-      <div className="bg-amber-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2">
-        <WifiOff className="h-4 w-4" strokeWidth={2}/>
+      <div className="bg-indigo-600 text-white px-4 py-3 rounded-xl shadow-lg shadow-indigo-900/40 flex items-center gap-2">
+        <WifiOff className="h-4 w-4" strokeWidth={2} />
         <span className="text-sm font-medium">Offline - Data will sync when online</span>
       </div>
     </div>
@@ -228,8 +136,8 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
       <DialogContent className="max-w-2xl bg-white/90 backdrop-blur-2xl border-white/40 rounded-3xl shadow-2xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg">
-              <Sparkles className="h-6 w-6 text-white" strokeWidth={2}/>
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-600/40">
+              <Sparkles className="h-6 w-6 text-white" strokeWidth={2} />
             </div>
             <div>
               <DialogTitle>AI Goal Generator</DialogTitle>
@@ -285,10 +193,10 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
             />
           </div>
 
-          <div className="p-4 bg-gradient-to-br from-orange-50 to-rose-50 border border-orange-200/50 rounded-2xl">
+          <div className="p-4 bg-gradient-to-br from-sky-50 to-indigo-50 border border-indigo-200/60 rounded-2xl">
             <div className="flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" strokeWidth={2}/>
-              <div className="text-sm text-orange-900">
+              <Sparkles className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" strokeWidth={2} />
+              <div className="text-sm text-indigo-900">
                 <strong>Pro Tip:</strong> The AI uses research-based goal templates. You can edit the generated goal before saving.
               </div>
             </div>
@@ -302,7 +210,7 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
           <Button
             onClick={generateGoal}
             disabled={generating || !focusArea || !studentId}
-            className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-lg shadow-orange-500/30"
+            className="bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white shadow-lg shadow-blue-600/30"
           >
             {generating ? (
               <>
@@ -421,7 +329,7 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
           <div className="space-y-4">
             {!goal && (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowAI(true)} className="flex-1 border-orange-200 text-orange-600 hover:bg-orange-50">
+                <Button variant="outline" onClick={() => setShowAI(true)} className="flex-1 border-blue-200/60 text-blue-600 hover:bg-blue-50">
                   <Sparkles className="h-4 w-4 mr-2" strokeWidth={2}/>AI Assistant
                 </Button>
                 <Button variant="outline" onClick={() => setShowTemplates(true)} className="flex-1">
@@ -453,8 +361,21 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
             <Button onClick={() => {
-              if (!studentId || !description) return;
-              onSave({ ...goal, id: goal?.id || uid(), studentId, area, description, baseline, target, metric });
+              const trimmedDescription = description.trim();
+              const trimmedBaseline = baseline.trim();
+              const trimmedTarget = target.trim();
+              const trimmedMetric = metric.trim();
+              if (!studentId || !trimmedDescription) return;
+              onSave({
+                ...goal,
+                id: goal?.id || uid(),
+                studentId,
+                area,
+                description: trimmedDescription,
+                baseline: trimmedBaseline,
+                target: trimmedTarget,
+                metric: trimmedMetric
+              });
               onClose();
             }}>Save Goal</Button>
           </DialogFooter>
@@ -551,11 +472,11 @@ function GoalDetailDialog({ goal, student, logs, store, onClose }) {
           </div>
 
           {logs.length < 7 && (
-            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200/50 rounded-xl">
-              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" strokeWidth={2}/>
+            <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200/60 rounded-xl">
+              <AlertTriangle className="h-5 w-5 text-indigo-500 mt-0.5 flex-shrink-0" strokeWidth={2} />
               <div>
-                <div className="font-medium text-amber-900 text-sm">Need more data for statistical validity</div>
-                <div className="text-amber-700 text-sm">Collect {7 - logs.length} more data points for reliable trends (7-12 recommended)</div>
+                <div className="font-medium text-slate-900 text-sm">Need more data for statistical validity</div>
+                <div className="text-slate-600 text-sm">Collect {7 - logs.length} more data points for reliable trends (7-12 recommended)</div>
               </div>
             </div>
           )}
@@ -640,14 +561,33 @@ function GoalsView({ store, setStore }) {
   const [areaFilter, setAreaFilter] = useState("all");
   const [editDialog, setEditDialog] = useState(null);
   const [detailsDialog, setDetailsDialog] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const studentLookup = useMemo(() => {
+    const map = new Map();
+    store.students.forEach(student => {
+      map.set(student.id, student.name);
+    });
+    return map;
+  }, [store.students]);
 
   const filtered = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
     return store.goals.filter(g => {
       if (studentFilter !== "all" && g.studentId !== studentFilter) return false;
       if (areaFilter !== "all" && g.area !== areaFilter) return false;
+      if (query) {
+        const haystack = [
+          g.description,
+          g.area,
+          studentLookup.get(g.studentId) || "",
+          g.metric
+        ].map(value => (value || "").toLowerCase()).join(" ");
+        if (!haystack.includes(query)) return false;
+      }
       return true;
     });
-  }, [store.goals, studentFilter, areaFilter]);
+  }, [store.goals, studentFilter, areaFilter, searchTerm, studentLookup]);
 
   const areas = useMemo(() =>
     [...new Set(store.goals.map(g => g.area))],
@@ -655,17 +595,25 @@ function GoalsView({ store, setStore }) {
   );
 
   const handleSave = useCallback((goal) => {
+    const now = createTimestamp();
+    const goalWithTimestamps = {
+      ...goal,
+      createdAt: goal.createdAt || now
+    };
+
     setStore(prev => ({
       ...prev,
-      goals: prev.goals.find(g => g.id === goal.id)
-        ? prev.goals.map(g => g.id === goal.id ? goal : g)
-        : [goal, ...prev.goals]
+      lastUpdated: now,
+      goals: prev.goals.find(g => g.id === goalWithTimestamps.id)
+        ? prev.goals.map(g => g.id === goalWithTimestamps.id ? goalWithTimestamps : g)
+        : [goalWithTimestamps, ...prev.goals]
     }));
   }, [setStore]);
 
   const handleDelete = useCallback((id) => {
     setStore(prev => ({
       ...prev,
+      lastUpdated: createTimestamp(),
       goals: prev.goals.filter(g => g.id !== id),
       logs: prev.logs.filter(l => l.goalId !== id)
     }));
@@ -688,6 +636,15 @@ function GoalsView({ store, setStore }) {
             {areas.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
           </SelectContent>
         </Select>
+        <div className="relative w-full md:w-72">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" strokeWidth={2} />
+          <Input
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            placeholder="Search goals..."
+            className="pl-9 bg-white/80 backdrop-blur-xl border-black/5"
+          />
+        </div>
         <Button onClick={() => setEditDialog({})}>
           <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Goal
         </Button>
@@ -696,7 +653,9 @@ function GoalsView({ store, setStore }) {
       {filtered.length === 0 ? (
         <Card className="bg-white/80 backdrop-blur-xl border-black/5"><CardContent className="p-12 text-center">
           <TrendingUp className="h-12 w-12 mx-auto mb-3 text-slate-300" strokeWidth={2}/>
-          <p className="text-slate-500 font-medium">No goals yet</p>
+          <p className="text-slate-500 font-medium">
+            {store.goals.length === 0 ? "No goals yet" : "No goals match your filters"}
+          </p>
         </CardContent></Card>
       ) : (
         <div className="space-y-3">
@@ -776,21 +735,51 @@ function ProgressView({ store, setStore }) {
   const [notes, setNotes] = useState("");
 
   const filteredGoals = goalFilter === "all" ? store.goals : store.goals.filter(g => g.id === goalFilter);
+  const goalLookup = useMemo(() => new Map(store.goals.map(goal => [goal.id, goal])), [store.goals]);
+  const studentLookup = useMemo(() => new Map(store.students.map(student => [student.id, student])), [store.students]);
+  const logsForExport = useMemo(() => goalFilter === "all" ? store.logs : store.logs.filter(log => log.goalId === goalFilter), [store.logs, goalFilter]);
+
+  const exportLogsToCSV = useCallback(() => {
+    if (logsForExport.length === 0) {
+      alert('No logs to export for the current filters.');
+      return;
+    }
+
+    const header = ["Date", "Student", "Goal", "Area", "Score", "Metric", "Notes", "Accommodations"];
+    const rows = logsForExport.map(log => {
+      const goal = goalLookup.get(log.goalId);
+      const student = goal ? studentLookup.get(goal.studentId) : undefined;
+      return [
+        log.dateISO,
+        student?.name || "",
+        goal?.description || "",
+        goal?.area || "",
+        log.score,
+        goal?.metric || "",
+        log.notes || "",
+        (log.accommodationsUsed || []).join("; ")
+      ];
+    });
+
+    exportCSV([header, ...rows], `progress-logs-${goalFilter === 'all' ? 'all' : goalFilter}.csv`);
+  }, [goalFilter, goalLookup, logsForExport, studentLookup]);
 
   const handleAddLog = () => {
-    if (goalFilter === "all" || !score) return;
+    const trimmedScore = score.trim();
+    if (goalFilter === "all" || !trimmedScore) return;
 
     const newLog = {
       id: uid(),
       goalId: goalFilter,
       dateISO,
-      score,
-      notes,
+      score: trimmedScore,
+      notes: notes.trim(),
       accommodationsUsed: []
     };
 
     setStore(prev => ({
       ...prev,
+      lastUpdated: createTimestamp(),
       logs: [newLog, ...prev.logs]
     }));
 
@@ -802,7 +791,12 @@ function ProgressView({ store, setStore }) {
     <div className="space-y-6">
       <Card className="bg-white/80 backdrop-blur-xl border-black/5">
         <CardContent className="p-6">
-          <h3 className="text-lg font-semibold text-slate-900 mb-4">Log Progress</h3>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <h3 className="text-lg font-semibold text-slate-900">Log Progress</h3>
+            <Button variant="outline" size="sm" onClick={exportLogsToCSV} className="border-slate-200">
+              <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Export Logs
+            </Button>
+          </div>
           <div className="space-y-4">
             <Select value={goalFilter} onValueChange={setGoalFilter}>
               <SelectTrigger className="bg-white/80 backdrop-blur-xl border-black/5">
@@ -895,19 +889,43 @@ function StudentsView({ store, setStore }) {
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
   const [disability, setDisability] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+
+  const filteredStudents = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    const sorted = [...store.students].sort((a, b) => a.name.localeCompare(b.name));
+    if (!query) return sorted;
+    return sorted.filter(student => {
+      const haystack = [student.name, student.grade, student.disability]
+        .map(value => (value || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(query);
+    });
+  }, [store.students, searchTerm]);
 
   const handleSave = () => {
-    if (!name) return;
+    const trimmedName = name.trim();
+    const trimmedGrade = grade.trim();
+    const trimmedDisability = disability.trim();
+    if (!trimmedName) return;
 
     if (editDialog?.id) {
       setStore(prev => ({
         ...prev,
-        students: prev.students.map(s => s.id === editDialog.id ? { ...s, name, grade, disability } : s)
+        lastUpdated: createTimestamp(),
+        students: prev.students.map(s => s.id === editDialog.id ? {
+          ...s,
+          name: trimmedName,
+          grade: trimmedGrade,
+          disability: trimmedDisability
+        } : s)
       }));
     } else {
-      const newStudent = { id: uid(), name, grade, disability };
+      const now = createTimestamp();
+      const newStudent = { id: uid(), name: trimmedName, grade: trimmedGrade, disability: trimmedDisability, createdAt: now };
       setStore(prev => ({
         ...prev,
+        lastUpdated: now,
         students: [newStudent, ...prev.students]
       }));
     }
@@ -921,6 +939,7 @@ function StudentsView({ store, setStore }) {
   const handleDelete = (id) => {
     setStore(prev => ({
       ...prev,
+      lastUpdated: createTimestamp(),
       students: prev.students.filter(s => s.id !== id),
       goals: prev.goals.filter(g => g.studentId !== id),
       logs: prev.logs.filter(l => {
@@ -932,23 +951,36 @@ function StudentsView({ store, setStore }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-2xl font-bold text-slate-900">Students</h2>
-        <Button onClick={() => setEditDialog({})}>
-          <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Student
-        </Button>
+        <div className="flex flex-1 md:flex-initial items-center gap-2 justify-end">
+          <div className="relative w-full max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" strokeWidth={2} />
+            <Input
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+              placeholder="Search students..."
+              className="pl-9 bg-white/80 backdrop-blur-xl border-black/5"
+            />
+          </div>
+          <Button onClick={() => setEditDialog({})}>
+            <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Student
+          </Button>
+        </div>
       </div>
 
-      {store.students.length === 0 ? (
+      {filteredStudents.length === 0 ? (
         <Card className="bg-white/80 backdrop-blur-xl border-black/5">
           <CardContent className="p-12 text-center">
             <Users className="h-12 w-12 mx-auto mb-3 text-slate-300" strokeWidth={2}/>
-            <p className="text-slate-500 font-medium">No students yet</p>
+            <p className="text-slate-500 font-medium">
+              {store.students.length === 0 ? "No students yet" : "No students match your filters"}
+            </p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {store.students.map(student => {
+          {filteredStudents.map(student => {
             const goalsCount = store.goals.filter(g => g.studentId === student.id).length;
 
             return (
@@ -1054,78 +1086,78 @@ function Dashboard({ store }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-teal-400 to-teal-500 text-white border-0 shadow-lg shadow-teal-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-600/30 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-teal-50 text-sm font-medium">Students</p>
+                <p className="text-blue-50 text-sm font-medium">Students</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalStudents}</p>
               </div>
-              <Users className="h-8 w-8 text-teal-50" strokeWidth={2}/>
+              <Users className="h-8 w-8 text-blue-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-400 to-rose-500 text-white border-0 shadow-lg shadow-orange-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-indigo-600 to-slate-700 text-white border-0 shadow-lg shadow-slate-900/30 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-50 text-sm font-medium">Goals</p>
+                <p className="text-indigo-50 text-sm font-medium">Goals</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalGoals}</p>
               </div>
-              <TrendingUp className="h-8 w-8 text-orange-50" strokeWidth={2}/>
+              <TrendingUp className="h-8 w-8 text-indigo-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-emerald-400 to-teal-500 text-white border-0 shadow-lg shadow-emerald-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-sky-500 to-blue-600 text-white border-0 shadow-lg shadow-blue-600/25 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-emerald-50 text-sm font-medium">Progress Logs</p>
+                <p className="text-blue-50 text-sm font-medium">Progress Logs</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalLogs}</p>
               </div>
-              <BarChart3 className="h-8 w-8 text-emerald-50" strokeWidth={2}/>
+              <BarChart3 className="h-8 w-8 text-blue-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-400 to-orange-500 text-white border-0 shadow-lg shadow-amber-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-slate-700 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-900/30 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-amber-50 text-sm font-medium">On Track</p>
+                <p className="text-blue-50 text-sm font-medium">On Track</p>
                 <p className="text-3xl font-bold mt-1">{stats.onTrackGoals}/{stats.totalGoals}</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-amber-50" strokeWidth={2}/>
+              <CheckCircle className="h-8 w-8 text-blue-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {store.students.length === 0 && (
-        <Card className="bg-gradient-to-br from-orange-50 to-rose-50 border-orange-200/50 rounded-2xl shadow-lg">
+        <Card className="bg-gradient-to-br from-sky-50 to-indigo-50 border-indigo-200/60 rounded-2xl shadow-lg shadow-indigo-200/40">
           <CardContent className="p-8">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center flex-shrink-0 shadow-lg">
-                <Sparkles className="h-6 w-6 text-white" strokeWidth={2}/>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/30">
+                <Sparkles className="h-6 w-6 text-white" strokeWidth={2} />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-orange-900 mb-2">Get Started with SUMRY</h3>
-                <p className="text-orange-800 mb-4">
+                <h3 className="text-lg font-semibold text-indigo-900 mb-2">Get Started with SUMRY</h3>
+                <p className="text-indigo-800 mb-4">
                   Welcome! Start by adding your first student, then create IEP goals and track progress.
                 </p>
-                <ul className="space-y-2 text-sm text-orange-700">
+                <ul className="space-y-2 text-sm text-indigo-700">
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
                     Add students in the Students tab
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
                     Create goals using AI assistance or templates
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
                     Log progress and analyze trends
                   </li>
                 </ul>
@@ -1195,7 +1227,7 @@ function getCurrentUser() {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-function setCurrentUser(user) {
+function persistCurrentUser(user) {
   if (user) {
     localStorage.setItem(currentUserKey, JSON.stringify(user));
   } else {
@@ -1239,7 +1271,7 @@ function LoginPage({ onLogin }) {
 
       users.push(newUser);
       saveUsers(users);
-      setCurrentUser(newUser);
+      persistCurrentUser(newUser);
       onLogin(newUser);
     } else {
       // Login
@@ -1249,17 +1281,17 @@ function LoginPage({ onLogin }) {
         return;
       }
 
-      setCurrentUser(user);
+      persistCurrentUser(user);
       onLogin(user);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50/30 via-orange-50/20 to-rose-50/30 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-sky-100/40 via-blue-50/30 to-indigo-100/40 flex items-center justify-center p-4">
       <Card className="w-full max-w-md bg-white/90 backdrop-blur-2xl border-white/40 rounded-3xl shadow-2xl">
         <CardContent className="p-8">
           <div className="flex items-center justify-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-600/40">
               <Award className="h-10 w-10 text-white" strokeWidth={2}/>
             </div>
           </div>
@@ -1334,13 +1366,9 @@ function LoginPage({ onLogin }) {
 
 // ========== MAIN APP ==========
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(getCurrentUser);
-  const [store, setStore] = useState(loadStore);
+  const { store, setStore, replaceStore } = usePersistentStore();
+  const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState("dashboard");
-
-  useEffect(() => {
-    saveStore(store);
-  }, [store]);
 
   const handleImport = (e) => {
     const file = e.target.files?.[0];
@@ -1350,35 +1378,38 @@ export default function App() {
     reader.onload = (evt) => {
       try {
         const imported = JSON.parse(evt.target?.result);
-        setStore(imported);
+        const normalized = normalizeStoreData(imported);
+        const stamped = { ...normalized, lastUpdated: createTimestamp() };
+        replaceStore(stamped);
         alert('Data imported successfully!');
       } catch (err) {
         alert('Error importing file');
       }
     };
     reader.readAsText(file);
+    e.target.value = "";
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem(currentUserKey);
+    persistCurrentUser(null);
+    setCurrentUserState(null);
   };
 
   // Show login page if not authenticated
   if (!currentUser) {
-    return <LoginPage onLogin={setCurrentUser} />;
+    return <LoginPage onLogin={setCurrentUserState} />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50/30 via-orange-50/20 to-rose-50/30">
+    <div className="min-h-screen bg-gradient-to-br from-sky-100/40 via-blue-50/30 to-indigo-100/40">
       <OfflineIndicator />
 
       <div className="border-b bg-white/60 backdrop-blur-xl border-white/20 sticky top-0 z-40 shadow-lg shadow-black/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-coral-500 to-rose-500 flex items-center justify-center shadow-lg">
-                <Award className="h-6 w-6 text-white" strokeWidth={2}/>
+              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-600/30">
+                <Award className="h-6 w-6 text-white" strokeWidth={2} />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">SUMRY</h1>
@@ -1394,6 +1425,13 @@ export default function App() {
                 <Upload className="h-4 w-4 mr-2" strokeWidth={2}/>Import
               </Button>
               <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
+
+              {store.lastUpdated && (
+                <div className="hidden lg:flex flex-col text-right text-xs px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40 text-slate-500">
+                  <span className="uppercase tracking-wide text-[10px] text-slate-400">Last updated</span>
+                  <span className="text-slate-600 font-medium">{formatTimestamp(store.lastUpdated)}</span>
+                </div>
+              )}
 
               <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
                 <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40">
