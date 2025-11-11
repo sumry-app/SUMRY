@@ -355,8 +355,8 @@ export default function TeacherDashboard({
                       <div className="text-xs text-gray-600">Avg Accuracy</div>
                     </div>
                   </div>
-                </Card>
-              </CardContent>
+                </CardContent>
+              </Card>
             ))}
           </div>
         </CardContent>
