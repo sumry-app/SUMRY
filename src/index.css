@@ -4,44 +4,44 @@
 
 @layer base {
   :root {
-    /* Warm off-white background */
-    --background: 35 20% 98%;
-    --foreground: 20 14% 20%;
+    /* Professional cobalt-inspired palette */
+    --background: 223 48% 97%;
+    --foreground: 225 42% 15%;
 
-    /* Card colors - slightly warmer white */
-    --card: 35 30% 97%;
-    --card-foreground: 20 14% 20%;
+    /* Surface colors */
+    --card: 0 0% 100%;
+    --card-foreground: 225 42% 15%;
 
     /* Popover colors */
-    --popover: 35 30% 97%;
-    --popover-foreground: 20 14% 20%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 225 42% 15%;
 
-    /* Primary - Warm Coral/Terracotta */
-    --primary: 14 77% 62%;
+    /* Primary - cobalt blue */
+    --primary: 223 85% 54%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Muted Teal */
-    --secondary: 152 30% 60%;
-    --secondary-foreground: 20 14% 20%;
+    /* Secondary - soft slate */
+    --secondary: 220 29% 68%;
+    --secondary-foreground: 225 42% 15%;
 
     /* Muted colors */
-    --muted: 35 20% 92%;
-    --muted-foreground: 20 10% 45%;
+    --muted: 220 32% 92%;
+    --muted-foreground: 223 24% 40%;
 
-    /* Accent - Warm Sand */
-    --accent: 40 82% 75%;
-    --accent-foreground: 20 14% 20%;
+    /* Accent - polar highlight */
+    --accent: 204 92% 85%;
+    --accent-foreground: 225 42% 15%;
 
-    /* Destructive - Warm red */
-    --destructive: 0 72% 58%;
+    /* Destructive - modern warning red */
+    --destructive: 352 78% 55%;
     --destructive-foreground: 0 0% 100%;
 
     /* Borders and inputs */
-    --border: 35 15% 88%;
-    --input: 35 15% 88%;
+    --border: 220 26% 88%;
+    --input: 220 26% 88%;
 
     /* Focus ring */
-    --ring: 14 77% 62%;
+    --ring: 223 85% 54%;
 
     /* Softer, more rounded corners */
     --radius: 1rem;
@@ -52,24 +52,28 @@
   }
 
   body {
-    background-color: hsl(var(--background));
+    background:
+      radial-gradient(circle at 18% 18%, rgba(82, 132, 252, 0.14), transparent 52%),
+      radial-gradient(circle at 82% 0%, rgba(54, 97, 245, 0.08), transparent 55%),
+      hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   }
 
   /* Enhanced glassmorphism support */
   .glass {
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.3);
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(80, 135, 255, 0.25);
+    box-shadow: 0 12px 40px -20px rgba(20, 60, 140, 0.45);
   }
 
   .glass-card {
-    background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+    background: linear-gradient(160deg, rgba(255, 255, 255, 0.78) 0%, rgba(228, 237, 255, 0.78) 100%);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    border: 1px solid rgba(108, 156, 255, 0.25);
+    box-shadow: 0 18px 45px -20px rgba(12, 58, 143, 0.35);
   }
 }
