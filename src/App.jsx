@@ -25,7 +25,8 @@ import {
   exportCSV,
   parseScore,
   calculateTrendline,
-  getProgressStatus
+  getProgressStatus,
+  computeStoreStats
 } from "@/lib/data";
 import { usePersistentStore } from "@/hooks/usePersistentStore";
 
