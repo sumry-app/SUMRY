@@ -9,9 +9,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import {
-  Download, Upload, Trash2, TrendingUp, Calendar, Edit, Eye,
-  Plus, Share2, Users, AlertTriangle, CheckCircle, BarChart3,
-  Sparkles, WifiOff, FileText, Award, LogOut, User, Search
+  Download, Upload, Trash2, Save, TrendingUp, Calendar, Edit, Eye,
+  ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
+  AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
+  Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
@@ -29,11 +31,191 @@ import { usePersistentStore } from "@/hooks/usePersistentStore";
 
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
+const STORE_VERSION = 1;
+const STORE_ARRAY_KEYS = [
+  "students",
+  "goals",
+  "logs",
+  "schedules",
+  "accommodations",
+  "behaviorLogs",
+  "presentLevels",
+  "serviceLogs",
+  "parentAccounts",
+  "teamMembers",
+  "assessments",
+  "compliance",
+  "aiSuggestions"
+];
 
-function computeStoreStats(store) {
-  const totalStudents = store?.students?.length || 0;
-  const totalGoals = store?.goals?.length || 0;
-  const totalLogs = store?.logs?.length || 0;
+const createTimestamp = () => new Date().toISOString();
+const dateTimeFormatter = typeof Intl !== "undefined"
+  ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })
+  : null;
+
+function formatTimestamp(isoString) {
+  if (!isoString || !dateTimeFormatter) return "";
+  try {
+    return dateTimeFormatter.format(new Date(isoString));
+  } catch {
+    return "";
+  }
+}
+
+function ensureArray(value, expectObjects = true) {
+  if (!Array.isArray(value)) return [];
+  if (!expectObjects) {
+    return value.filter(item => item !== null && item !== undefined);
+  }
+  return value.filter(item => item && typeof item === "object");
+}
+
+function dedupeById(list) {
+  const seen = new Map();
+  list.forEach(item => {
+    if (item?.id && !seen.has(item.id)) {
+      seen.set(item.id, item);
+    }
+  });
+  return Array.from(seen.values());
+}
+
+function getEmptyStore() {
+  const base = {
+    version: STORE_VERSION,
+    lastUpdated: createTimestamp()
+  };
+  STORE_ARRAY_KEYS.forEach(key => {
+    base[key] = [];
+  });
+  return base;
+}
+
+function normalizeStoreData(raw) {
+  if (!raw || typeof raw !== "object") {
+    return getEmptyStore();
+  }
+
+  const normalized = getEmptyStore();
+  normalized.version = typeof raw.version === "number" ? raw.version : STORE_VERSION;
+  normalized.lastUpdated = typeof raw.lastUpdated === "string" ? raw.lastUpdated : createTimestamp();
+
+  normalized.students = dedupeById(
+    ensureArray(raw.students).map(student => ({
+      id: typeof student.id === "string" ? student.id : uid(),
+      name: typeof student.name === "string" && student.name.trim() ? student.name.trim() : "Unnamed Student",
+      grade: typeof student.grade === "string" ? student.grade.trim() : "",
+      disability: typeof student.disability === "string" ? student.disability.trim() : "",
+      createdAt: typeof student.createdAt === "string" ? student.createdAt : normalized.lastUpdated
+    }))
+  );
+
+  const studentIds = new Set(normalized.students.map(s => s.id));
+
+  normalized.goals = dedupeById(
+    ensureArray(raw.goals).map(goal => {
+      const studentId = typeof goal.studentId === "string" && studentIds.has(goal.studentId)
+        ? goal.studentId
+        : null;
+
+      if (!studentId) return null;
+
+      return {
+        id: typeof goal.id === "string" ? goal.id : uid(),
+        studentId,
+        area: typeof goal.area === "string" ? goal.area.trim() || "General" : "General",
+        description: typeof goal.description === "string" ? goal.description.trim() : "",
+        baseline: typeof goal.baseline === "string" ? goal.baseline.trim() : "",
+        target: typeof goal.target === "string" ? goal.target.trim() : "",
+        metric: typeof goal.metric === "string" && goal.metric.trim() ? goal.metric.trim() : "",
+        createdAt: typeof goal.createdAt === "string" ? goal.createdAt : normalized.lastUpdated,
+        aiGenerated: Boolean(goal.aiGenerated)
+      };
+    }).filter(Boolean)
+  );
+
+  const goalIds = new Set(normalized.goals.map(g => g.id));
+
+  normalized.logs = dedupeById(
+    ensureArray(raw.logs).map(log => {
+      const goalId = typeof log.goalId === "string" && goalIds.has(log.goalId) ? log.goalId : null;
+      if (!goalId) return null;
+
+      const dateISO = typeof log.dateISO === "string" && /\d{4}-\d{2}-\d{2}/.test(log.dateISO)
+        ? log.dateISO.slice(0, 10)
+        : createTimestamp().slice(0, 10);
+
+      return {
+        id: typeof log.id === "string" ? log.id : uid(),
+        goalId,
+        dateISO,
+        score: typeof log.score === "string" || typeof log.score === "number" ? String(log.score).trim() : "",
+        notes: typeof log.notes === "string" ? log.notes.trim() : "",
+        accommodationsUsed: ensureArray(log.accommodationsUsed).map(item => String(item).trim()).filter(Boolean),
+        evidence: typeof log.evidence === "string" ? log.evidence : undefined
+      };
+    }).filter(Boolean)
+  );
+
+  STORE_ARRAY_KEYS.forEach(key => {
+    if (key === "students" || key === "goals" || key === "logs") return;
+    normalized[key] = ensureArray(raw[key], false);
+  });
+
+  return normalized;
+}
+
+function loadStore() {
+  const raw = localStorage.getItem(storageKey);
+  if (!raw) return getEmptyStore();
+  try {
+    return normalizeStoreData(JSON.parse(raw));
+  } catch {
+    return getEmptyStore();
+  }
+}
+
+function saveStore(store) {
+  localStorage.setItem(storageKey, JSON.stringify(normalizeStoreData(store)));
+}
+
+function exportJSON(store) {
+  const safeStore = normalizeStoreData(store);
+  const blob = new Blob([JSON.stringify(safeStore, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `sumry-complete-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportCSV(rows, filename) {
+  const csv = rows.map(r => r.map(s => `"${String(s ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseScore(score) {
+  const num = parseFloat(score);
+  return isNaN(num) ? null : num;
+}
+
+function calculateTrendline(data) {
+  if (data.length < 2) return null;
+  const points = data.map((d, i) => ({ x: i, y: parseScore(d.score) })).filter(p => p.y !== null);
+  if (points.length < 2) return null;
+
+  const n = points.length;
+  const sumX = points.reduce((a, p) => a + p.x, 0);
+  const sumY = points.reduce((a, p) => a + p.y, 0);
+  const sumXY = points.reduce((a, p) => a + p.x * p.y, 0);
+  const sumX2 = points.reduce((a, p) => a + p.x * p.x, 0);
 
   const onTrackGoals = (store?.goals || []).filter(goal => {
     const logs = (store?.logs || []).filter(log => log.goalId === goal.id);
@@ -1394,7 +1576,7 @@ export default function App() {
         const imported = JSON.parse(evt.target?.result);
         const normalized = normalizeStoreData(imported);
         const stamped = { ...normalized, lastUpdated: createTimestamp() };
-        replaceStore(stamped);
+        setStore(stamped);
         alert('Data imported successfully!');
       } catch (err) {
         alert('Error importing file');
@@ -1522,47 +1704,17 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-slate-900/20 bg-slate-900 p-8 text-slate-100 shadow-2xl shadow-slate-900/40">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Workspace Owner</p>
-                    <p className="mt-2 text-lg font-semibold text-white">{currentUser.name}</p>
-                  </div>
-                  <span className="rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-100">Secure</span>
+              {store.lastUpdated && (
+                <div className="hidden lg:flex flex-col text-right text-xs px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40 text-slate-500">
+                  <span className="uppercase tracking-wide text-[10px] text-slate-400">Last updated</span>
+                  <span className="text-slate-600 font-medium">{formatTimestamp(store.lastUpdated)}</span>
                 </div>
-                <div className="mt-6 space-y-4 text-sm">
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span>Last sync</span>
-                    <span className="font-medium text-white">{lastUpdatedLabel}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span>Data health</span>
-                    <span className="font-medium text-white">{dataHealth}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span>Active modules</span>
-                    <span className="font-medium text-white">Dashboard · Students · Goals · Progress</span>
-                  </div>
-                </div>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                    onClick={() => exportJSON(store)}
-                  >
-                    <Download className="mr-2 h-4 w-4" strokeWidth={2} />
-                    Export data
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-600/30 hover:from-blue-500 hover:to-indigo-400"
-                    onClick={() => document.getElementById('import-input')?.click()}
-                  >
-                    <Upload className="mr-2 h-4 w-4" strokeWidth={2} />
-                    Import data
-                  </Button>
-                  <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
+              )}
+
+              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40">
+                  <User className="h-4 w-4 text-slate-600" strokeWidth={2}/>
+                  <span className="text-sm font-medium text-slate-700">{currentUser.name}</span>
                 </div>
               </div>
             </div>
