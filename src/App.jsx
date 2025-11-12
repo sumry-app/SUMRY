@@ -30,6 +30,20 @@ import { usePersistentStore } from "@/hooks/usePersistentStore";
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
 
+function computeStoreStats(store) {
+  const totalStudents = store?.students?.length || 0;
+  const totalGoals = store?.goals?.length || 0;
+  const totalLogs = store?.logs?.length || 0;
+
+  const onTrackGoals = (store?.goals || []).filter(goal => {
+    const logs = (store?.logs || []).filter(log => log.goalId === goal.id);
+    const status = getProgressStatus(logs, goal.baseline, goal.target);
+    return status.status === "on-track";
+  }).length;
+
+  return { totalStudents, totalGoals, totalLogs, onTrackGoals };
+}
+
 // ========== SHARED COMPONENTS ==========
 function ConfirmButton({ onConfirm, children, variant, size = "sm" }) {
   const [armed, setArmed] = useState(false);
@@ -1059,20 +1073,11 @@ function StudentsView({ store, setStore }) {
 }
 
 // ========== DASHBOARD ==========
-function Dashboard({ store }) {
-  const stats = useMemo(() => {
-    const totalStudents = store.students.length;
-    const totalGoals = store.goals.length;
-    const totalLogs = store.logs.length;
-
-    const onTrackGoals = store.goals.filter(g => {
-      const logs = store.logs.filter(l => l.goalId === g.id);
-      const status = getProgressStatus(logs, g.baseline, g.target);
-      return status.status === 'on-track';
-    }).length;
-
-    return { totalStudents, totalGoals, totalLogs, onTrackGoals };
-  }, [store]);
+function Dashboard({ store, stats: statsOverride }) {
+  const stats = useMemo(
+    () => statsOverride ?? computeStoreStats(store),
+    [statsOverride, store]
+  );
 
   return (
     <div className="space-y-6">
@@ -1283,79 +1288,88 @@ function LoginPage({ onLogin }) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-100/40 via-blue-50/30 to-indigo-100/40 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-white/90 backdrop-blur-2xl border-white/40 rounded-3xl shadow-2xl">
-        <CardContent className="p-8">
-          <div className="flex items-center justify-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-600/40">
-              <Award className="h-10 w-10 text-white" strokeWidth={2}/>
-            </div>
-          </div>
-
-          <h1 className="text-3xl font-bold text-center text-slate-900 mb-2">SUMRY</h1>
-          <p className="text-center text-slate-600 mb-8">IEP Management System</p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignup && (
-              <div>
-                <Label>Name</Label>
-                <Input
-                  type="text"
-                  placeholder="Your name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
-                />
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(80,115,255,0.16),transparent_55%)]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 -right-20 h-96 w-96 rounded-full bg-gradient-to-br from-blue-400/35 to-indigo-500/20 blur-3xl" />
+        <div className="absolute top-1/2 -left-28 h-[22rem] w-[22rem] rounded-full bg-gradient-to-br from-sky-200/50 to-blue-200/20 blur-3xl" />
+      </div>
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
+        <Card className="w-full max-w-md rounded-3xl border border-white/60 bg-white/80 backdrop-blur-2xl shadow-2xl shadow-slate-200/70">
+          <CardContent className="p-8">
+            <div className="mb-8 flex items-center justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 shadow-lg shadow-indigo-600/40">
+                <Award className="h-10 w-10 text-white" strokeWidth={2} />
               </div>
-            )}
-
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
-              />
             </div>
-
-            <div>
-              <Label>Password</Label>
-              <Input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
-              />
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-sm text-red-600">{error}</p>
-              </div>
-            )}
-
-            <Button type="submit" className="w-full">
-              {isSignup ? "Create Account" : "Sign In"}
-            </Button>
 
             <div className="text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignup(!isSignup);
-                  setError("");
-                }}
-                className="text-sm text-slate-600 hover:text-slate-900"
-              >
-                {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
-              </button>
+              <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.4em] text-blue-700">SUMRY</span>
+              <h1 className="mt-4 text-3xl font-semibold text-slate-900">Welcome back</h1>
+              <p className="mt-2 text-sm text-slate-600">Sign in to orchestrate purposeful IEP growth.</p>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+
+            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+              {isSignup && (
+                <div>
+                  <Label className="text-sm font-medium text-slate-700">Name</Label>
+                  <Input
+                    type="text"
+                    placeholder="Your name"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label className="text-sm font-medium text-slate-700">Email</Label>
+                <Input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium text-slate-700">Password</Label>
+                <Input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
+                />
+              </div>
+
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50/80 p-3">
+                  <p className="text-sm font-medium text-red-600">{error}</p>
+                </div>
+              )}
+
+              <Button type="submit" className="w-full rounded-xl shadow-lg shadow-blue-500/20">
+                {isSignup ? "Create Account" : "Sign In"}
+              </Button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignup(!isSignup);
+                    setError("");
+                  }}
+                  className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+                >
+                  {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
+                </button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -1365,6 +1379,10 @@ export default function App() {
   const { store, setStore, replaceStore } = usePersistentStore();
   const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState("dashboard");
+  const stats = useMemo(() => computeStoreStats(store), [store]);
+  const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
+  const dataHealth = stats.totalLogs > 0 ? "Active tracking" : "Awaiting logs";
+  const lastUpdatedLabel = store.lastUpdated ? formatTimestamp(store.lastUpdated) : "Awaiting first sync";
 
   const handleImport = (e) => {
     const file = e.target.files?.[0];
@@ -1397,85 +1415,212 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-100/40 via-blue-50/30 to-indigo-100/40">
-      <OfflineIndicator />
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(80,115,255,0.16),transparent_55%)]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-gradient-to-br from-blue-400/40 to-indigo-500/25 blur-3xl" />
+        <div className="absolute top-1/2 -left-40 h-[28rem] w-[28rem] rounded-full bg-gradient-to-br from-sky-200/40 to-blue-200/20 blur-3xl" />
+      </div>
 
-      <div className="border-b bg-white/60 backdrop-blur-xl border-white/20 sticky top-0 z-40 shadow-lg shadow-black/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+      <div className="relative z-10 flex min-h-screen flex-col">
+        <OfflineIndicator />
+
+        <header className="sticky top-0 z-40 border-b border-white/60 bg-white/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-indigo-600/30">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 shadow-lg shadow-blue-600/30">
                 <Award className="h-6 w-6 text-white" strokeWidth={2} />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">SUMRY</h1>
-                <p className="text-xs text-slate-600">IEP Management System</p>
+                <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-slate-500">Professional IEP Workspace</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => exportJSON(store)} size="sm" className="border-slate-200 rounded-xl">
-                <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Export
-              </Button>
-              <Button variant="outline" size="sm" className="border-slate-200 rounded-xl" onClick={() => document.getElementById('import-input')?.click()}>
-                <Upload className="h-4 w-4 mr-2" strokeWidth={2}/>Import
-              </Button>
-              <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
-
-              {store.lastUpdated && (
-                <div className="hidden lg:flex flex-col text-right text-xs px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40 text-slate-500">
-                  <span className="uppercase tracking-wide text-[10px] text-slate-400">Last updated</span>
-                  <span className="text-slate-600 font-medium">{formatTimestamp(store.lastUpdated)}</span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40">
-                  <User className="h-4 w-4 text-slate-600" strokeWidth={2}/>
-                  <span className="text-sm font-medium text-slate-700">{currentUser.name}</span>
-                </div>
-                <Button variant="outline" size="sm" onClick={handleLogout} className="border-slate-200 rounded-xl">
-                  <LogOut className="h-4 w-4 mr-2" strokeWidth={2}/>Logout
-                </Button>
+            <div className="flex items-center gap-3">
+              <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:flex">
+                <Sparkles className="h-3.5 w-3.5 text-blue-600" strokeWidth={2} />
+                Guided insights
               </div>
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm">
+                <User className="h-4 w-4 text-slate-500" strokeWidth={2} />
+                {currentUser.name}
+              </div>
+              <Button variant="outline" size="sm" onClick={handleLogout} className="rounded-xl border-slate-200">
+                <LogOut className="mr-2 h-4 w-4" strokeWidth={2} />
+                Sign out
+              </Button>
             </div>
           </div>
-        </div>
-      </div>
+        </header>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-white/60 backdrop-blur-xl border border-white/40 p-1.5 shadow-lg shadow-black/5 rounded-2xl">
-            <TabsTrigger value="dashboard" className="rounded-xl">
-              <BarChart3 className="h-4 w-4 mr-2" strokeWidth={2}/>Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="students" className="rounded-xl">
-              <Users className="h-4 w-4 mr-2" strokeWidth={2}/>Students
-            </TabsTrigger>
-            <TabsTrigger value="goals" className="rounded-xl">
-              <TrendingUp className="h-4 w-4 mr-2" strokeWidth={2}/>Goals
-            </TabsTrigger>
-            <TabsTrigger value="progress" className="rounded-xl">
-              <Calendar className="h-4 w-4 mr-2" strokeWidth={2}/>Progress
-            </TabsTrigger>
-          </TabsList>
+        <main className="flex-1 pb-16">
+          <section className="pt-12">
+            <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:px-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+              <div className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 p-8 shadow-xl shadow-slate-200/70 backdrop-blur-xl">
+                <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-br from-blue-400/35 to-indigo-500/25 blur-3xl" />
+                <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.45em] text-blue-700">
+                  IEP Strategy
+                </span>
+                <h2 className="mt-6 text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl">
+                  Design-led clarity for every student plan
+                </h2>
+                <p className="mt-4 max-w-2xl text-base text-slate-600">
+                  Coordinate milestones, monitor evidence, and bring families along with a polished workspace built for student success teams.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button
+                    size="lg"
+                    className="rounded-xl shadow-lg shadow-blue-500/30"
+                    onClick={() => setActiveTab("students")}
+                  >
+                    <Users className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Manage students
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="rounded-xl border-slate-200 bg-white hover:bg-slate-100"
+                    onClick={() => setActiveTab("progress")}
+                  >
+                    <TrendingUp className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Track progress
+                  </Button>
+                </div>
+                <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm shadow-slate-200/70">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Students</span>
+                      <Users className="h-4 w-4 text-blue-600" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalStudents}</p>
+                    <p className="text-xs text-slate-500">Active profiles</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-blue-500/10 via-white to-white p-4 shadow-sm shadow-slate-200/70">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Goals</span>
+                      <BarChart3 className="h-4 w-4 text-blue-600" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalGoals}</p>
+                    <p className="text-xs text-slate-500">Defined objectives</p>
+                  </div>
+                  <div className="rounded-2xl border border-blue-100/70 bg-blue-50/80 p-4 shadow-sm shadow-blue-200/60">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">Engagement</span>
+                      <FileText className="h-4 w-4 text-blue-600" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalLogs}</p>
+                    <p className="text-xs text-blue-700/80">Progress updates logged</p>
+                  </div>
+                  <div className="rounded-2xl border-0 bg-gradient-to-br from-blue-600 to-indigo-600 p-4 text-white shadow-lg shadow-indigo-800/40">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-100">On Track</span>
+                      <CheckCircle className="h-4 w-4 text-blue-100" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold">{onTrackRate}%</p>
+                    <p className="text-xs text-blue-100/80">{stats.onTrackGoals} goals tracking</p>
+                  </div>
+                </div>
+              </div>
 
-          <TabsContent value="dashboard">
-            <Dashboard store={store} />
-          </TabsContent>
+              <div className="rounded-3xl border border-slate-900/20 bg-slate-900 p-8 text-slate-100 shadow-2xl shadow-slate-900/40">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Workspace Owner</p>
+                    <p className="mt-2 text-lg font-semibold text-white">{currentUser.name}</p>
+                  </div>
+                  <span className="rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-100">Secure</span>
+                </div>
+                <div className="mt-6 space-y-4 text-sm">
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Last sync</span>
+                    <span className="font-medium text-white">{lastUpdatedLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Data health</span>
+                    <span className="font-medium text-white">{dataHealth}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Active modules</span>
+                    <span className="font-medium text-white">Dashboard · Students · Goals · Progress</span>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={() => exportJSON(store)}
+                  >
+                    <Download className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Export data
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-600/30 hover:from-blue-500 hover:to-indigo-400"
+                    onClick={() => document.getElementById('import-input')?.click()}
+                  >
+                    <Upload className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Import data
+                  </Button>
+                  <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
+                </div>
+              </div>
+            </div>
+          </section>
 
-          <TabsContent value="students">
-            <StudentsView store={store} setStore={setStore} />
-          </TabsContent>
+          <section className="pt-12">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+                <TabsList className="rounded-2xl border border-white/60 bg-white/80 p-1.5 text-slate-500 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
+                  <TabsTrigger
+                    value="dashboard"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <BarChart3 className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Dashboard
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="students"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <Users className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Students
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="goals"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <TrendingUp className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Goals
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="progress"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <Calendar className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Progress
+                  </TabsTrigger>
+                </TabsList>
 
-          <TabsContent value="goals">
-            <GoalsView store={store} setStore={setStore} />
-          </TabsContent>
+                <TabsContent value="dashboard">
+                  <Dashboard store={store} stats={stats} />
+                </TabsContent>
 
-          <TabsContent value="progress">
-            <ProgressView store={store} setStore={setStore} />
-          </TabsContent>
-        </Tabs>
+                <TabsContent value="students">
+                  <StudentsView store={store} setStore={setStore} />
+                </TabsContent>
+
+                <TabsContent value="goals">
+                  <GoalsView store={store} setStore={setStore} />
+                </TabsContent>
+
+                <TabsContent value="progress">
+                  <ProgressView store={store} setStore={setStore} />
+                </TabsContent>
+              </Tabs>
+            </div>
+          </section>
+        </main>
       </div>
     </div>
   );
