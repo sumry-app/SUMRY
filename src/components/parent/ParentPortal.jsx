@@ -24,19 +24,19 @@ export default function ParentPortal({ student, goals, progressLogs }) {
     .slice(0, 10);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-purple-50 via-pink-50 to-orange-50 p-6">
+    <div className="min-h-screen bg-gradient-to-br from-sky-100 via-blue-50 to-indigo-100 p-6">
       {/* Header */}
       <div className="max-w-6xl mx-auto mb-6">
-        <div className="bg-white rounded-2xl shadow-lg p-6">
+        <div className="bg-white/90 backdrop-blur-xl rounded-2xl shadow-xl shadow-indigo-200/50 p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-pink-500 rounded-full flex items-center justify-center text-white text-2xl font-bold">
+              <div className="w-16 h-16 bg-gradient-to-br from-blue-600 to-indigo-500 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-600/30">
                 {student.name.split(' ').map(n => n[0]).join('')}
               </div>
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">{student.name}'s Progress</h1>
-                <p className="text-gray-600">{student.grade} • {student.disability}</p>
-              </div>
+                <div>
+                  <h1 className="text-2xl font-bold text-gray-900">{student.name}&rsquo;s Progress</h1>
+                  <p className="text-gray-600">{student.grade} • {student.disability}</p>
+                </div>
             </div>
             <div className="flex gap-2">
               <Button variant="outline" size="sm">
@@ -77,54 +77,54 @@ export default function ParentPortal({ student, goals, progressLogs }) {
           <TabsContent value="overview" className="space-y-6">
             {/* Quick Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Card className="border-2 border-green-200 bg-green-50">
+              <Card className="border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white/90 shadow-sm">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-green-700">Active Goals</p>
-                      <p className="text-3xl font-bold text-green-900 mt-2">{studentGoals.length}</p>
+                      <p className="text-sm font-medium text-indigo-600">Active Goals</p>
+                      <p className="text-3xl font-bold text-indigo-900 mt-2">{studentGoals.length}</p>
                     </div>
-                    <Target className="w-12 h-12 text-green-600 opacity-50" />
+                    <Target className="w-12 h-12 text-indigo-500 opacity-60" />
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="border-2 border-blue-200 bg-blue-50">
+              <Card className="border border-blue-200 bg-gradient-to-br from-sky-50 to-white/90 shadow-sm">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-blue-700">Progress Logs</p>
+                      <p className="text-sm font-medium text-blue-600">Progress Logs</p>
                       <p className="text-3xl font-bold text-blue-900 mt-2">{recentProgress.length}</p>
                     </div>
-                    <TrendingUp className="w-12 h-12 text-blue-600 opacity-50" />
+                    <TrendingUp className="w-12 h-12 text-blue-500 opacity-60" />
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="border-2 border-purple-200 bg-purple-50">
+              <Card className="border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white/90 shadow-sm">
                 <CardContent className="pt-6">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-sm font-medium text-purple-700">On Track</p>
-                      <p className="text-3xl font-bold text-purple-900 mt-2">
+                      <p className="text-sm font-medium text-cyan-600">On Track</p>
+                      <p className="text-3xl font-bold text-slate-900 mt-2">
                         {Math.round((studentGoals.length * 0.8))}
                       </p>
                     </div>
-                    <CheckCircle className="w-12 h-12 text-purple-600 opacity-50" />
+                    <CheckCircle className="w-12 h-12 text-cyan-500 opacity-60" />
                   </div>
                 </CardContent>
               </Card>
             </div>
 
             {/* Welcome Message */}
-            <Card className="border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-pink-50">
+            <Card className="border border-indigo-200 bg-gradient-to-br from-blue-50 to-indigo-50">
               <CardContent className="pt-6">
                 <div className="flex items-start gap-4">
-                  <Heart className="w-8 h-8 text-purple-600 flex-shrink-0" />
+                  <Heart className="w-8 h-8 text-indigo-500 flex-shrink-0" />
                   <div>
-                    <h3 className="font-semibold text-lg mb-2">Welcome to Your Child's Progress Portal!</h3>
+                    <h3 className="font-semibold text-lg mb-2">Welcome to Your Child&rsquo;s Progress Portal!</h3>
                     <p className="text-gray-700 mb-4">
-                      This portal provides real-time access to {student.name}'s IEP goals and progress.
+                      This portal provides real-time access to {student.name}&rsquo;s IEP goals and progress.
                       You can view detailed progress charts, communicate with teachers, and download reports for IEP meetings.
                     </p>
                     <div className="flex flex-wrap gap-2">
@@ -143,10 +143,10 @@ export default function ParentPortal({ student, goals, progressLogs }) {
             </Card>
 
             {/* Recent Achievements */}
-            <Card>
+            <Card className="border border-blue-100 shadow-sm">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Award className="w-5 h-5 text-yellow-600" />
+                  <Award className="w-5 h-5 text-blue-600" />
                   Recent Achievements & Highlights
                 </CardTitle>
               </CardHeader>
@@ -155,8 +155,8 @@ export default function ParentPortal({ student, goals, progressLogs }) {
                   {recentProgress.slice(0, 5).map((log, index) => {
                     const goal = goals.find(g => g.id === log.goalId);
                     return (
-                      <div key={index} className="flex items-start gap-3 p-3 bg-green-50 rounded-lg border border-green-200">
-                        <CheckCircle className="w-5 h-5 text-green-600 mt-0.5" />
+                      <div key={index} className="flex items-start gap-3 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                        <CheckCircle className="w-5 h-5 text-blue-600 mt-0.5" />
                         <div className="flex-1">
                           <p className="font-medium text-sm">{goal?.description}</p>
                           <p className="text-sm text-gray-700 mt-1">{log.notes}</p>
@@ -203,9 +203,9 @@ export default function ParentPortal({ student, goals, progressLogs }) {
                         <span className="font-semibold">Current: {latestScore} {goal.metric}</span>
                         <span>Target: {goal.target} {goal.metric}</span>
                       </div>
-                      <div className="w-full bg-gray-200 rounded-full h-3">
+                      <div className="w-full bg-slate-200/70 rounded-full h-3">
                         <div
-                          className="h-3 rounded-full bg-gradient-to-r from-green-500 to-green-600 transition-all duration-500"
+                          className="h-3 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 transition-all duration-500"
                           style={{ width: `${Math.min(progressPercent, 100)}%` }}
                         />
                       </div>
@@ -223,7 +223,7 @@ export default function ParentPortal({ student, goals, progressLogs }) {
                             <XAxis dataKey="date" tick={{ fontSize: 10 }} />
                             <YAxis />
                             <Tooltip />
-                            <Line type="monotone" dataKey="score" stroke="#10B981" strokeWidth={2} />
+                            <Line type="monotone" dataKey="score" stroke="#2563EB" strokeWidth={2} />
                           </LineChart>
                         </ResponsiveContainer>
                       </div>
@@ -256,7 +256,7 @@ export default function ParentPortal({ student, goals, progressLogs }) {
                     return (
                       <div key={index} className="flex gap-4 pb-4 border-b last:border-0">
                         <div className="flex flex-col items-center">
-                          <div className="w-8 h-8 rounded-full bg-green-500 text-white flex items-center justify-center text-sm font-bold">
+                          <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center text-sm font-bold">
                             {log.score}
                           </div>
                           {index < recentProgress.length - 1 && (
