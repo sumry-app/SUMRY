@@ -1711,10 +1711,47 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40">
-                  <User className="h-4 w-4 text-slate-600" strokeWidth={2}/>
-                  <span className="text-sm font-medium text-slate-700">{currentUser.name}</span>
+              <div className="rounded-3xl border border-slate-900/20 bg-slate-900 p-8 text-slate-100 shadow-2xl shadow-slate-900/40">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Workspace Owner</p>
+                    <p className="mt-2 text-lg font-semibold text-white">{currentUser.name}</p>
+                  </div>
+                  <span className="rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-100">Secure</span>
+                </div>
+                <div className="mt-6 space-y-4 text-sm">
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Last sync</span>
+                    <span className="font-medium text-white">{lastUpdatedLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Data health</span>
+                    <span className="font-medium text-white">{dataHealth}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Active modules</span>
+                    <span className="font-medium text-white">Dashboard · Students · Goals · Progress</span>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={() => exportJSON(store)}
+                  >
+                    <Download className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Export data
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-600/30 hover:from-blue-500 hover:to-indigo-400"
+                    onClick={() => document.getElementById('import-input')?.click()}
+                  >
+                    <Upload className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Import data
+                  </Button>
+                  <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
                 </div>
               </div>
             </div>
