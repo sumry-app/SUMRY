@@ -3,20 +3,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
-  Download, Upload, Trash2, Save, TrendingUp, Calendar, Edit, Eye,
-  ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
-  AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
-  Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search
+  Download, Upload, Trash2, TrendingUp, Calendar, Edit, Eye,
+  Plus, Share2, Users, AlertTriangle, CheckCircle, BarChart3,
+  Sparkles, WifiOff, FileText, Award, LogOut, User, Search
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
   uid,
   createTimestamp,
@@ -388,7 +385,7 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
   );
 }
 
-function GoalDetailDialog({ goal, student, logs, store, onClose }) {
+function GoalDetailDialog({ goal, student, logs, onClose }) {
   const sortedLogs = useMemo(() =>
     [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     [logs]
@@ -719,7 +716,6 @@ function GoalsView({ store, setStore }) {
           goal={detailsDialog}
           student={store.students.find(s => s.id === detailsDialog.studentId)}
           logs={store.logs.filter(l => l.goalId === detailsDialog.id)}
-          store={store}
           onClose={() => setDetailsDialog(null)}
         />
       )}
