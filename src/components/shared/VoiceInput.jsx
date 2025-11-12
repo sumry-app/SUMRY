@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
  * Voice Input Component - Game changer for busy teachers
  * Log progress while walking around the classroom!
  */
-export default function VoiceInput({ onTranscript, placeholder = "Click microphone to start..." }) {
+export default function VoiceInput({ onTranscript, placeholder = 'Click microphone to start...' }) {
   const [isListening, setIsListening] = useState(false);
   const [transcript, setTranscript] = useState('');
   const [interimTranscript, setInterimTranscript] = useState('');
@@ -206,9 +206,9 @@ export default function VoiceInput({ onTranscript, placeholder = "Click micropho
         <div className="text-xs text-gray-600 space-y-1">
           <p className="font-medium">💡 Voice Input Tips:</p>
           <ul className="list-disc list-inside space-y-0.5 ml-2">
-            <li>Click the microphone to start recording</li>
+            <li>{placeholder}</li>
             <li>Speak clearly and naturally</li>
-            <li>Say "period" for punctuation</li>
+            <li>Say “period” for punctuation</li>
             <li>Works great for quick progress notes!</li>
           </ul>
         </div>

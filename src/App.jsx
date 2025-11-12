@@ -3,11 +3,10 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import {
   Download, Upload, Trash2, Save, TrendingUp, Calendar, Edit, Eye,
@@ -16,11 +15,20 @@ import {
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
   MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, BarChart, Bar, Legend } from 'recharts';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
+import {
+  uid,
+  createTimestamp,
+  formatTimestamp,
+  normalizeStoreData,
+  exportJSON,
+  exportCSV,
+  parseScore,
+  calculateTrendline,
+  getProgressStatus
+} from "@/lib/data";
+import { usePersistentStore } from "@/hooks/usePersistentStore";
 
-// ========== CORE UTILITIES ==========
-const uid = () => Math.random().toString(36).slice(2, 10);
-const storageKey = "sumry_complete_v1";
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
 const STORE_VERSION = 1;
@@ -209,40 +217,13 @@ function calculateTrendline(data) {
   const sumXY = points.reduce((a, p) => a + p.x * p.y, 0);
   const sumX2 = points.reduce((a, p) => a + p.x * p.x, 0);
 
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
+  const onTrackGoals = (store?.goals || []).filter(goal => {
+    const logs = (store?.logs || []).filter(log => log.goalId === goal.id);
+    const status = getProgressStatus(logs, goal.baseline, goal.target);
+    return status.status === "on-track";
+  }).length;
 
-  return { slope, intercept };
-}
-
-function predictProgress(logs, target, baseline) {
-  const sorted = [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-  const trendline = calculateTrendline(sorted);
-  if (!trendline) return null;
-
-  const projectedNext = trendline.slope * sorted.length + trendline.intercept;
-  const targetNum = parseScore(target);
-  const baselineNum = parseScore(baseline);
-  if (targetNum === null || baselineNum === null) return null;
-
-  const onTrack = projectedNext >= targetNum * 0.8;
-  return {
-    projected: projectedNext.toFixed(1),
-    onTrack,
-    trend: trendline.slope > 0 ? 'improving' : trendline.slope < 0 ? 'declining' : 'stable'
-  };
-}
-
-function getProgressStatus(logs, baseline, target) {
-  if (logs.length < 3) return { status: 'insufficient', color: 'gray', label: 'Need more data' };
-  const prediction = predictProgress(logs, target, baseline);
-  if (!prediction) return { status: 'insufficient', color: 'gray', label: 'Need more data' };
-
-  if (prediction.onTrack) {
-    return { status: 'on-track', color: 'green', label: 'On track' };
-  } else {
-    return { status: 'off-track', color: 'red', label: 'Off track - IEP team review needed' };
-  }
+  return { totalStudents, totalGoals, totalLogs, onTrackGoals };
 }
 
 // ========== SHARED COMPONENTS ==========
@@ -278,8 +259,8 @@ function OfflineIndicator() {
 
   return (
     <div className="fixed bottom-4 left-4 z-50 animate-in slide-in-from-bottom-5">
-      <div className="bg-amber-500 text-white px-4 py-3 rounded-xl shadow-lg flex items-center gap-2">
-        <WifiOff className="h-4 w-4" strokeWidth={2}/>
+      <div className="bg-indigo-600 text-white px-4 py-3 rounded-xl shadow-lg shadow-indigo-900/40 flex items-center gap-2">
+        <WifiOff className="h-4 w-4" strokeWidth={2} />
         <span className="text-sm font-medium">Offline - Data will sync when online</span>
       </div>
     </div>
@@ -348,8 +329,8 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
       <DialogContent className="max-w-2xl bg-white/90 backdrop-blur-2xl border-white/40 rounded-3xl shadow-2xl">
         <DialogHeader>
           <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg">
-              <Sparkles className="h-6 w-6 text-white" strokeWidth={2}/>
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-600/40">
+              <Sparkles className="h-6 w-6 text-white" strokeWidth={2} />
             </div>
             <div>
               <DialogTitle>AI Goal Generator</DialogTitle>
@@ -405,10 +386,10 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
             />
           </div>
 
-          <div className="p-4 bg-gradient-to-br from-orange-50 to-rose-50 border border-orange-200/50 rounded-2xl">
+          <div className="p-4 bg-gradient-to-br from-sky-50 to-indigo-50 border border-indigo-200/60 rounded-2xl">
             <div className="flex items-start gap-2">
-              <Sparkles className="h-4 w-4 text-orange-600 mt-0.5 flex-shrink-0" strokeWidth={2}/>
-              <div className="text-sm text-orange-900">
+              <Sparkles className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" strokeWidth={2} />
+              <div className="text-sm text-indigo-900">
                 <strong>Pro Tip:</strong> The AI uses research-based goal templates. You can edit the generated goal before saving.
               </div>
             </div>
@@ -422,7 +403,7 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
           <Button
             onClick={generateGoal}
             disabled={generating || !focusArea || !studentId}
-            className="bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-lg shadow-orange-500/30"
+            className="bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white shadow-lg shadow-blue-600/30"
           >
             {generating ? (
               <>
@@ -541,7 +522,7 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
           <div className="space-y-4">
             {!goal && (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowAI(true)} className="flex-1 border-orange-200 text-orange-600 hover:bg-orange-50">
+                <Button variant="outline" onClick={() => setShowAI(true)} className="flex-1 border-blue-200/60 text-blue-600 hover:bg-blue-50">
                   <Sparkles className="h-4 w-4 mr-2" strokeWidth={2}/>AI Assistant
                 </Button>
                 <Button variant="outline" onClick={() => setShowTemplates(true)} className="flex-1">
@@ -600,7 +581,7 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
   );
 }
 
-function GoalDetailDialog({ goal, student, logs, store, onClose }) {
+function GoalDetailDialog({ goal, student, logs, onClose }) {
   const sortedLogs = useMemo(() =>
     [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     [logs]
@@ -684,11 +665,11 @@ function GoalDetailDialog({ goal, student, logs, store, onClose }) {
           </div>
 
           {logs.length < 7 && (
-            <div className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200/50 rounded-xl">
-              <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 flex-shrink-0" strokeWidth={2}/>
+            <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200/60 rounded-xl">
+              <AlertTriangle className="h-5 w-5 text-indigo-500 mt-0.5 flex-shrink-0" strokeWidth={2} />
               <div>
-                <div className="font-medium text-amber-900 text-sm">Need more data for statistical validity</div>
-                <div className="text-amber-700 text-sm">Collect {7 - logs.length} more data points for reliable trends (7-12 recommended)</div>
+                <div className="font-medium text-slate-900 text-sm">Need more data for statistical validity</div>
+                <div className="text-slate-600 text-sm">Collect {7 - logs.length} more data points for reliable trends (7-12 recommended)</div>
               </div>
             </div>
           )}
@@ -931,7 +912,6 @@ function GoalsView({ store, setStore }) {
           goal={detailsDialog}
           student={store.students.find(s => s.id === detailsDialog.studentId)}
           logs={store.logs.filter(l => l.goalId === detailsDialog.id)}
-          store={store}
           onClose={() => setDetailsDialog(null)}
         />
       )}
@@ -1275,20 +1255,11 @@ function StudentsView({ store, setStore }) {
 }
 
 // ========== DASHBOARD ==========
-function Dashboard({ store }) {
-  const stats = useMemo(() => {
-    const totalStudents = store.students.length;
-    const totalGoals = store.goals.length;
-    const totalLogs = store.logs.length;
-
-    const onTrackGoals = store.goals.filter(g => {
-      const logs = store.logs.filter(l => l.goalId === g.id);
-      const status = getProgressStatus(logs, g.baseline, g.target);
-      return status.status === 'on-track';
-    }).length;
-
-    return { totalStudents, totalGoals, totalLogs, onTrackGoals };
-  }, [store]);
+function Dashboard({ store, stats: statsOverride }) {
+  const stats = useMemo(
+    () => statsOverride ?? computeStoreStats(store),
+    [statsOverride, store]
+  );
 
   return (
     <div className="space-y-6">
@@ -1298,78 +1269,78 @@ function Dashboard({ store }) {
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-teal-400 to-teal-500 text-white border-0 shadow-lg shadow-teal-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-600/30 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-teal-50 text-sm font-medium">Students</p>
+                <p className="text-blue-50 text-sm font-medium">Students</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalStudents}</p>
               </div>
-              <Users className="h-8 w-8 text-teal-50" strokeWidth={2}/>
+              <Users className="h-8 w-8 text-blue-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-orange-400 to-rose-500 text-white border-0 shadow-lg shadow-orange-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-indigo-600 to-slate-700 text-white border-0 shadow-lg shadow-slate-900/30 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-orange-50 text-sm font-medium">Goals</p>
+                <p className="text-indigo-50 text-sm font-medium">Goals</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalGoals}</p>
               </div>
-              <TrendingUp className="h-8 w-8 text-orange-50" strokeWidth={2}/>
+              <TrendingUp className="h-8 w-8 text-indigo-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-emerald-400 to-teal-500 text-white border-0 shadow-lg shadow-emerald-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-sky-500 to-blue-600 text-white border-0 shadow-lg shadow-blue-600/25 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-emerald-50 text-sm font-medium">Progress Logs</p>
+                <p className="text-blue-50 text-sm font-medium">Progress Logs</p>
                 <p className="text-3xl font-bold mt-1">{stats.totalLogs}</p>
               </div>
-              <BarChart3 className="h-8 w-8 text-emerald-50" strokeWidth={2}/>
+              <BarChart3 className="h-8 w-8 text-blue-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="bg-gradient-to-br from-amber-400 to-orange-500 text-white border-0 shadow-lg shadow-amber-500/20 rounded-2xl">
+        <Card className="bg-gradient-to-br from-slate-700 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-900/30 rounded-2xl">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-amber-50 text-sm font-medium">On Track</p>
+                <p className="text-blue-50 text-sm font-medium">On Track</p>
                 <p className="text-3xl font-bold mt-1">{stats.onTrackGoals}/{stats.totalGoals}</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-amber-50" strokeWidth={2}/>
+              <CheckCircle className="h-8 w-8 text-blue-50" strokeWidth={2} />
             </div>
           </CardContent>
         </Card>
       </div>
 
       {store.students.length === 0 && (
-        <Card className="bg-gradient-to-br from-orange-50 to-rose-50 border-orange-200/50 rounded-2xl shadow-lg">
+        <Card className="bg-gradient-to-br from-sky-50 to-indigo-50 border-indigo-200/60 rounded-2xl shadow-lg shadow-indigo-200/40">
           <CardContent className="p-8">
             <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center flex-shrink-0 shadow-lg">
-                <Sparkles className="h-6 w-6 text-white" strokeWidth={2}/>
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/30">
+                <Sparkles className="h-6 w-6 text-white" strokeWidth={2} />
               </div>
               <div>
-                <h3 className="text-lg font-semibold text-orange-900 mb-2">Get Started with SUMRY</h3>
-                <p className="text-orange-800 mb-4">
+                <h3 className="text-lg font-semibold text-indigo-900 mb-2">Get Started with SUMRY</h3>
+                <p className="text-indigo-800 mb-4">
                   Welcome! Start by adding your first student, then create IEP goals and track progress.
                 </p>
-                <ul className="space-y-2 text-sm text-orange-700">
+                <ul className="space-y-2 text-sm text-indigo-700">
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
                     Add students in the Students tab
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
                     Create goals using AI assistance or templates
                   </li>
                   <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-orange-600" strokeWidth={2}/>
+                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
                     Log progress and analyze trends
                   </li>
                 </ul>
@@ -1439,7 +1410,7 @@ function getCurrentUser() {
   try { return JSON.parse(raw); } catch { return null; }
 }
 
-function setCurrentUser(user) {
+function persistCurrentUser(user) {
   if (user) {
     localStorage.setItem(currentUserKey, JSON.stringify(user));
   } else {
@@ -1483,7 +1454,7 @@ function LoginPage({ onLogin }) {
 
       users.push(newUser);
       saveUsers(users);
-      setCurrentUser(newUser);
+      persistCurrentUser(newUser);
       onLogin(newUser);
     } else {
       // Login
@@ -1493,98 +1464,107 @@ function LoginPage({ onLogin }) {
         return;
       }
 
-      setCurrentUser(user);
+      persistCurrentUser(user);
       onLogin(user);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50/30 via-orange-50/20 to-rose-50/30 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md bg-white/90 backdrop-blur-2xl border-white/40 rounded-3xl shadow-2xl">
-        <CardContent className="p-8">
-          <div className="flex items-center justify-center mb-8">
-            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500 to-rose-500 flex items-center justify-center shadow-lg">
-              <Award className="h-10 w-10 text-white" strokeWidth={2}/>
-            </div>
-          </div>
-
-          <h1 className="text-3xl font-bold text-center text-slate-900 mb-2">SUMRY</h1>
-          <p className="text-center text-slate-600 mb-8">IEP Management System</p>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {isSignup && (
-              <div>
-                <Label>Name</Label>
-                <Input
-                  type="text"
-                  placeholder="Your name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
-                />
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(80,115,255,0.16),transparent_55%)]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 -right-20 h-96 w-96 rounded-full bg-gradient-to-br from-blue-400/35 to-indigo-500/20 blur-3xl" />
+        <div className="absolute top-1/2 -left-28 h-[22rem] w-[22rem] rounded-full bg-gradient-to-br from-sky-200/50 to-blue-200/20 blur-3xl" />
+      </div>
+      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
+        <Card className="w-full max-w-md rounded-3xl border border-white/60 bg-white/80 backdrop-blur-2xl shadow-2xl shadow-slate-200/70">
+          <CardContent className="p-8">
+            <div className="mb-8 flex items-center justify-center">
+              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 shadow-lg shadow-indigo-600/40">
+                <Award className="h-10 w-10 text-white" strokeWidth={2} />
               </div>
-            )}
-
-            <div>
-              <Label>Email</Label>
-              <Input
-                type="email"
-                placeholder="your@email.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
-              />
             </div>
-
-            <div>
-              <Label>Password</Label>
-              <Input
-                type="password"
-                placeholder="••••••••"
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                className="bg-white/80 backdrop-blur-xl border-black/5 rounded-xl"
-              />
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
-                <p className="text-sm text-red-600">{error}</p>
-              </div>
-            )}
-
-            <Button type="submit" className="w-full">
-              {isSignup ? "Create Account" : "Sign In"}
-            </Button>
 
             <div className="text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSignup(!isSignup);
-                  setError("");
-                }}
-                className="text-sm text-slate-600 hover:text-slate-900"
-              >
-                {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
-              </button>
+              <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.4em] text-blue-700">SUMRY</span>
+              <h1 className="mt-4 text-3xl font-semibold text-slate-900">Welcome back</h1>
+              <p className="mt-2 text-sm text-slate-600">Sign in to orchestrate purposeful IEP growth.</p>
             </div>
-          </form>
-        </CardContent>
-      </Card>
+
+            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
+              {isSignup && (
+                <div>
+                  <Label className="text-sm font-medium text-slate-700">Name</Label>
+                  <Input
+                    type="text"
+                    placeholder="Your name"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
+                  />
+                </div>
+              )}
+
+              <div>
+                <Label className="text-sm font-medium text-slate-700">Email</Label>
+                <Input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm font-medium text-slate-700">Password</Label>
+                <Input
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
+                />
+              </div>
+
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50/80 p-3">
+                  <p className="text-sm font-medium text-red-600">{error}</p>
+                </div>
+              )}
+
+              <Button type="submit" className="w-full rounded-xl shadow-lg shadow-blue-500/20">
+                {isSignup ? "Create Account" : "Sign In"}
+              </Button>
+
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsSignup(!isSignup);
+                    setError("");
+                  }}
+                  className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
+                >
+                  {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
+                </button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
 
 // ========== MAIN APP ==========
 export default function App() {
-  const [currentUser, setCurrentUser] = useState(getCurrentUser);
-  const [store, setStore] = useState(loadStore);
+  const { store, setStore, replaceStore } = usePersistentStore();
+  const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState("dashboard");
-
-  useEffect(() => {
-    saveStore(store);
-  }, [store]);
+  const stats = useMemo(() => computeStoreStats(store), [store]);
+  const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
+  const dataHealth = stats.totalLogs > 0 ? "Active tracking" : "Awaiting logs";
+  const lastUpdatedLabel = store.lastUpdated ? formatTimestamp(store.lastUpdated) : "Awaiting first sync";
 
   const handleImport = (e) => {
     const file = e.target.files?.[0];
@@ -1607,40 +1587,122 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setCurrentUser(null);
-    localStorage.removeItem(currentUserKey);
+    persistCurrentUser(null);
+    setCurrentUserState(null);
   };
 
   // Show login page if not authenticated
   if (!currentUser) {
-    return <LoginPage onLogin={setCurrentUser} />;
+    return <LoginPage onLogin={setCurrentUserState} />;
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50/30 via-orange-50/20 to-rose-50/30">
-      <OfflineIndicator />
+    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(80,115,255,0.16),transparent_55%)]">
+      <div className="pointer-events-none absolute inset-0">
+        <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-gradient-to-br from-blue-400/40 to-indigo-500/25 blur-3xl" />
+        <div className="absolute top-1/2 -left-40 h-[28rem] w-[28rem] rounded-full bg-gradient-to-br from-sky-200/40 to-blue-200/20 blur-3xl" />
+      </div>
 
-      <div className="border-b bg-white/60 backdrop-blur-xl border-white/20 sticky top-0 z-40 shadow-lg shadow-black/5">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+      <div className="relative z-10 flex min-h-screen flex-col">
+        <OfflineIndicator />
+
+        <header className="sticky top-0 z-40 border-b border-white/60 bg-white/80 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-coral-500 to-rose-500 flex items-center justify-center shadow-lg">
-                <Award className="h-6 w-6 text-white" strokeWidth={2}/>
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 shadow-lg shadow-blue-600/30">
+                <Award className="h-6 w-6 text-white" strokeWidth={2} />
               </div>
               <div>
                 <h1 className="text-xl font-bold text-slate-900">SUMRY</h1>
-                <p className="text-xs text-slate-600">IEP Management System</p>
+                <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-slate-500">Professional IEP Workspace</p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <Button variant="outline" onClick={() => exportJSON(store)} size="sm" className="border-slate-200 rounded-xl">
-                <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Export
+            <div className="flex items-center gap-3">
+              <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:flex">
+                <Sparkles className="h-3.5 w-3.5 text-blue-600" strokeWidth={2} />
+                Guided insights
+              </div>
+              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm">
+                <User className="h-4 w-4 text-slate-500" strokeWidth={2} />
+                {currentUser.name}
+              </div>
+              <Button variant="outline" size="sm" onClick={handleLogout} className="rounded-xl border-slate-200">
+                <LogOut className="mr-2 h-4 w-4" strokeWidth={2} />
+                Sign out
               </Button>
-              <Button variant="outline" size="sm" className="border-slate-200 rounded-xl" onClick={() => document.getElementById('import-input')?.click()}>
-                <Upload className="h-4 w-4 mr-2" strokeWidth={2}/>Import
-              </Button>
-              <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
+            </div>
+          </div>
+        </header>
+
+        <main className="flex-1 pb-16">
+          <section className="pt-12">
+            <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:px-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
+              <div className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 p-8 shadow-xl shadow-slate-200/70 backdrop-blur-xl">
+                <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-br from-blue-400/35 to-indigo-500/25 blur-3xl" />
+                <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.45em] text-blue-700">
+                  IEP Strategy
+                </span>
+                <h2 className="mt-6 text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl">
+                  Design-led clarity for every student plan
+                </h2>
+                <p className="mt-4 max-w-2xl text-base text-slate-600">
+                  Coordinate milestones, monitor evidence, and bring families along with a polished workspace built for student success teams.
+                </p>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button
+                    size="lg"
+                    className="rounded-xl shadow-lg shadow-blue-500/30"
+                    onClick={() => setActiveTab("students")}
+                  >
+                    <Users className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Manage students
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="rounded-xl border-slate-200 bg-white hover:bg-slate-100"
+                    onClick={() => setActiveTab("progress")}
+                  >
+                    <TrendingUp className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Track progress
+                  </Button>
+                </div>
+                <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm shadow-slate-200/70">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Students</span>
+                      <Users className="h-4 w-4 text-blue-600" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalStudents}</p>
+                    <p className="text-xs text-slate-500">Active profiles</p>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-blue-500/10 via-white to-white p-4 shadow-sm shadow-slate-200/70">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Goals</span>
+                      <BarChart3 className="h-4 w-4 text-blue-600" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalGoals}</p>
+                    <p className="text-xs text-slate-500">Defined objectives</p>
+                  </div>
+                  <div className="rounded-2xl border border-blue-100/70 bg-blue-50/80 p-4 shadow-sm shadow-blue-200/60">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">Engagement</span>
+                      <FileText className="h-4 w-4 text-blue-600" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalLogs}</p>
+                    <p className="text-xs text-blue-700/80">Progress updates logged</p>
+                  </div>
+                  <div className="rounded-2xl border-0 bg-gradient-to-br from-blue-600 to-indigo-600 p-4 text-white shadow-lg shadow-indigo-800/40">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-100">On Track</span>
+                      <CheckCircle className="h-4 w-4 text-blue-100" strokeWidth={2} />
+                    </div>
+                    <p className="mt-2 text-2xl font-semibold">{onTrackRate}%</p>
+                    <p className="text-xs text-blue-100/80">{stats.onTrackGoals} goals tracking</p>
+                  </div>
+                </div>
+              </div>
 
               {store.lastUpdated && (
                 <div className="hidden lg:flex flex-col text-right text-xs px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40 text-slate-500">
@@ -1654,48 +1716,63 @@ export default function App() {
                   <User className="h-4 w-4 text-slate-600" strokeWidth={2}/>
                   <span className="text-sm font-medium text-slate-700">{currentUser.name}</span>
                 </div>
-                <Button variant="outline" size="sm" onClick={handleLogout} className="border-slate-200 rounded-xl">
-                  <LogOut className="h-4 w-4 mr-2" strokeWidth={2}/>Logout
-                </Button>
               </div>
             </div>
-          </div>
-        </div>
-      </div>
+          </section>
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="bg-white/60 backdrop-blur-xl border border-white/40 p-1.5 shadow-lg shadow-black/5 rounded-2xl">
-            <TabsTrigger value="dashboard" className="rounded-xl">
-              <BarChart3 className="h-4 w-4 mr-2" strokeWidth={2}/>Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="students" className="rounded-xl">
-              <Users className="h-4 w-4 mr-2" strokeWidth={2}/>Students
-            </TabsTrigger>
-            <TabsTrigger value="goals" className="rounded-xl">
-              <TrendingUp className="h-4 w-4 mr-2" strokeWidth={2}/>Goals
-            </TabsTrigger>
-            <TabsTrigger value="progress" className="rounded-xl">
-              <Calendar className="h-4 w-4 mr-2" strokeWidth={2}/>Progress
-            </TabsTrigger>
-          </TabsList>
+          <section className="pt-12">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+                <TabsList className="rounded-2xl border border-white/60 bg-white/80 p-1.5 text-slate-500 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
+                  <TabsTrigger
+                    value="dashboard"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <BarChart3 className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Dashboard
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="students"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <Users className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Students
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="goals"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <TrendingUp className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Goals
+                  </TabsTrigger>
+                  <TabsTrigger
+                    value="progress"
+                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
+                  >
+                    <Calendar className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Progress
+                  </TabsTrigger>
+                </TabsList>
 
-          <TabsContent value="dashboard">
-            <Dashboard store={store} />
-          </TabsContent>
+                <TabsContent value="dashboard">
+                  <Dashboard store={store} stats={stats} />
+                </TabsContent>
 
-          <TabsContent value="students">
-            <StudentsView store={store} setStore={setStore} />
-          </TabsContent>
+                <TabsContent value="students">
+                  <StudentsView store={store} setStore={setStore} />
+                </TabsContent>
 
-          <TabsContent value="goals">
-            <GoalsView store={store} setStore={setStore} />
-          </TabsContent>
+                <TabsContent value="goals">
+                  <GoalsView store={store} setStore={setStore} />
+                </TabsContent>
 
-          <TabsContent value="progress">
-            <ProgressView store={store} setStore={setStore} />
-          </TabsContent>
-        </Tabs>
+                <TabsContent value="progress">
+                  <ProgressView store={store} setStore={setStore} />
+                </TabsContent>
+              </Tabs>
+            </div>
+          </section>
+        </main>
       </div>
     </div>
   );
