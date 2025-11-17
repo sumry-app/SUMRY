@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import {
   Plus, TrendingUp, Users, Target, Calendar, FileText, Mic,
-  Search, Sparkles, Download, Upload, Settings, Zap
+  Search, Sparkles, Download, Upload, Settings, Zap, FileSpreadsheet
 } from 'lucide-react';
 
 /**
@@ -103,11 +103,11 @@ export default function QuickActions({ onAction }) {
           keywords: ['meeting', 'iep', 'preparation']
         },
         {
-          icon: Download,
-          label: 'Export Data',
+          icon: FileSpreadsheet,
+          label: 'Export to Excel',
           shortcut: 'Ctrl+E',
-          action: 'export',
-          keywords: ['export', 'download', 'backup']
+          action: 'export-excel',
+          keywords: ['export', 'excel', 'xlsx', 'spreadsheet', 'download']
         },
         {
           icon: FileText,
@@ -115,6 +115,13 @@ export default function QuickActions({ onAction }) {
           shortcut: 'Ctrl+P',
           action: 'pdf-report',
           keywords: ['pdf', 'report', 'print']
+        },
+        {
+          icon: Download,
+          label: 'Export Data (Legacy)',
+          shortcut: 'Ctrl+Shift+E',
+          action: 'export',
+          keywords: ['export', 'download', 'backup', 'csv']
         }
       ]
     },

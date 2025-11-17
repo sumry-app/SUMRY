@@ -247,6 +247,20 @@ export function getProgressStatus(logs, baseline, target) {
   return { status: "off-track", color: "red", label: "Off track - IEP team review needed" };
 }
 
+export function computeStoreStats(store) {
+  const totalStudents = (store?.students || []).length;
+  const totalGoals = (store?.goals || []).length;
+  const totalLogs = (store?.logs || []).length;
+
+  const onTrackGoals = (store?.goals || []).filter(goal => {
+    const logs = (store?.logs || []).filter(log => log.goalId === goal.id);
+    const status = getProgressStatus(logs, goal.baseline, goal.target);
+    return status.status === "on-track";
+  }).length;
+
+  return { totalStudents, totalGoals, totalLogs, onTrackGoals };
+}
+
 export function getEmptyNormalizedStore() {
   return getEmptyStore();
 }

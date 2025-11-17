@@ -1,0 +1,27 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="512" height="512" fill="#3b82f6" rx="80"/>
+  
+  <!-- Icon Design - Clipboard with checkmark -->
+  <g transform="translate(128, 96)">
+    <!-- Clipboard -->
+    <rect x="20" y="40" width="216" height="280" fill="#ffffff" rx="12"/>
+    
+    <!-- Clip -->
+    <rect x="80" y="0" width="96" height="48" fill="#1e40af" rx="8"/>
+    <rect x="88" y="8" width="80" height="32" fill="#60a5fa" rx="4"/>
+    
+    <!-- Checkmark -->
+    <path d="M 80 160 L 110 190 L 170 120" 
+          stroke="#10b981" 
+          stroke-width="20" 
+          stroke-linecap="round" 
+          stroke-linejoin="round" 
+          fill="none"/>
+    
+    <!-- Lines (goals) -->
+    <rect x="50" y="220" width="156" height="12" fill="#e5e7eb" rx="6"/>
+    <rect x="50" y="250" width="120" height="12" fill="#e5e7eb" rx="6"/>
+    <rect x="50" y="280" width="140" height="12" fill="#e5e7eb" rx="6"/>
+  </g>
+</svg>

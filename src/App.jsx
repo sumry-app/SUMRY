@@ -25,206 +25,16 @@ import {
   exportCSV,
   parseScore,
   calculateTrendline,
-  getProgressStatus
+  getProgressStatus,
+  computeStoreStats
 } from "@/lib/data";
 import { usePersistentStore } from "@/hooks/usePersistentStore";
+import { AdvancedSearch } from "@/components/search/AdvancedSearch";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
+import { triggerNotifications } from "@/lib/notificationManager";
 
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
-const STORE_VERSION = 1;
-const STORE_ARRAY_KEYS = [
-  "students",
-  "goals",
-  "logs",
-  "schedules",
-  "accommodations",
-  "behaviorLogs",
-  "presentLevels",
-  "serviceLogs",
-  "parentAccounts",
-  "teamMembers",
-  "assessments",
-  "compliance",
-  "aiSuggestions"
-];
-
-const createTimestamp = () => new Date().toISOString();
-const dateTimeFormatter = typeof Intl !== "undefined"
-  ? new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" })
-  : null;
-
-function formatTimestamp(isoString) {
-  if (!isoString || !dateTimeFormatter) return "";
-  try {
-    return dateTimeFormatter.format(new Date(isoString));
-  } catch {
-    return "";
-  }
-}
-
-function ensureArray(value, expectObjects = true) {
-  if (!Array.isArray(value)) return [];
-  if (!expectObjects) {
-    return value.filter(item => item !== null && item !== undefined);
-  }
-  return value.filter(item => item && typeof item === "object");
-}
-
-function dedupeById(list) {
-  const seen = new Map();
-  list.forEach(item => {
-    if (item?.id && !seen.has(item.id)) {
-      seen.set(item.id, item);
-    }
-  });
-  return Array.from(seen.values());
-}
-
-function getEmptyStore() {
-  const base = {
-    version: STORE_VERSION,
-    lastUpdated: createTimestamp()
-  };
-  STORE_ARRAY_KEYS.forEach(key => {
-    base[key] = [];
-  });
-  return base;
-}
-
-function normalizeStoreData(raw) {
-  if (!raw || typeof raw !== "object") {
-    return getEmptyStore();
-  }
-
-  const normalized = getEmptyStore();
-  normalized.version = typeof raw.version === "number" ? raw.version : STORE_VERSION;
-  normalized.lastUpdated = typeof raw.lastUpdated === "string" ? raw.lastUpdated : createTimestamp();
-
-  normalized.students = dedupeById(
-    ensureArray(raw.students).map(student => ({
-      id: typeof student.id === "string" ? student.id : uid(),
-      name: typeof student.name === "string" && student.name.trim() ? student.name.trim() : "Unnamed Student",
-      grade: typeof student.grade === "string" ? student.grade.trim() : "",
-      disability: typeof student.disability === "string" ? student.disability.trim() : "",
-      createdAt: typeof student.createdAt === "string" ? student.createdAt : normalized.lastUpdated
-    }))
-  );
-
-  const studentIds = new Set(normalized.students.map(s => s.id));
-
-  normalized.goals = dedupeById(
-    ensureArray(raw.goals).map(goal => {
-      const studentId = typeof goal.studentId === "string" && studentIds.has(goal.studentId)
-        ? goal.studentId
-        : null;
-
-      if (!studentId) return null;
-
-      return {
-        id: typeof goal.id === "string" ? goal.id : uid(),
-        studentId,
-        area: typeof goal.area === "string" ? goal.area.trim() || "General" : "General",
-        description: typeof goal.description === "string" ? goal.description.trim() : "",
-        baseline: typeof goal.baseline === "string" ? goal.baseline.trim() : "",
-        target: typeof goal.target === "string" ? goal.target.trim() : "",
-        metric: typeof goal.metric === "string" && goal.metric.trim() ? goal.metric.trim() : "",
-        createdAt: typeof goal.createdAt === "string" ? goal.createdAt : normalized.lastUpdated,
-        aiGenerated: Boolean(goal.aiGenerated)
-      };
-    }).filter(Boolean)
-  );
-
-  const goalIds = new Set(normalized.goals.map(g => g.id));
-
-  normalized.logs = dedupeById(
-    ensureArray(raw.logs).map(log => {
-      const goalId = typeof log.goalId === "string" && goalIds.has(log.goalId) ? log.goalId : null;
-      if (!goalId) return null;
-
-      const dateISO = typeof log.dateISO === "string" && /\d{4}-\d{2}-\d{2}/.test(log.dateISO)
-        ? log.dateISO.slice(0, 10)
-        : createTimestamp().slice(0, 10);
-
-      return {
-        id: typeof log.id === "string" ? log.id : uid(),
-        goalId,
-        dateISO,
-        score: typeof log.score === "string" || typeof log.score === "number" ? String(log.score).trim() : "",
-        notes: typeof log.notes === "string" ? log.notes.trim() : "",
-        accommodationsUsed: ensureArray(log.accommodationsUsed).map(item => String(item).trim()).filter(Boolean),
-        evidence: typeof log.evidence === "string" ? log.evidence : undefined
-      };
-    }).filter(Boolean)
-  );
-
-  STORE_ARRAY_KEYS.forEach(key => {
-    if (key === "students" || key === "goals" || key === "logs") return;
-    normalized[key] = ensureArray(raw[key], false);
-  });
-
-  return normalized;
-}
-
-function loadStore() {
-  const raw = localStorage.getItem(storageKey);
-  if (!raw) return getEmptyStore();
-  try {
-    return normalizeStoreData(JSON.parse(raw));
-  } catch {
-    return getEmptyStore();
-  }
-}
-
-function saveStore(store) {
-  localStorage.setItem(storageKey, JSON.stringify(normalizeStoreData(store)));
-}
-
-function exportJSON(store) {
-  const safeStore = normalizeStoreData(store);
-  const blob = new Blob([JSON.stringify(safeStore, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `sumry-complete-${new Date().toISOString().slice(0,10)}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function exportCSV(rows, filename) {
-  const csv = rows.map(r => r.map(s => `"${String(s ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
-}
-
-function parseScore(score) {
-  const num = parseFloat(score);
-  return isNaN(num) ? null : num;
-}
-
-function calculateTrendline(data) {
-  if (data.length < 2) return null;
-  const points = data.map((d, i) => ({ x: i, y: parseScore(d.score) })).filter(p => p.y !== null);
-  if (points.length < 2) return null;
-
-  const n = points.length;
-  const sumX = points.reduce((a, p) => a + p.x, 0);
-  const sumY = points.reduce((a, p) => a + p.y, 0);
-  const sumXY = points.reduce((a, p) => a + p.x * p.y, 0);
-  const sumX2 = points.reduce((a, p) => a + p.x * p.x, 0);
-
-  const onTrackGoals = (store?.goals || []).filter(goal => {
-    const logs = (store?.logs || []).filter(log => log.goalId === goal.id);
-    const status = getProgressStatus(logs, goal.baseline, goal.target);
-    return status.status === "on-track";
-  }).length;
-
-  return { totalStudents, totalGoals, totalLogs, onTrackGoals };
-}
 
 // ========== SHARED COMPONENTS ==========
 function ConfirmButton({ onConfirm, children, variant, size = "sm" }) {
@@ -794,6 +604,9 @@ function GoalsView({ store, setStore }) {
       createdAt: goal.createdAt || now
     };
 
+    const isNewGoal = !store.goals.find(g => g.id === goalWithTimestamps.id);
+    const student = store.students.find(s => s.id === goalWithTimestamps.studentId);
+
     setStore(prev => ({
       ...prev,
       lastUpdated: now,
@@ -801,7 +614,16 @@ function GoalsView({ store, setStore }) {
         ? prev.goals.map(g => g.id === goalWithTimestamps.id ? goalWithTimestamps : g)
         : [goalWithTimestamps, ...prev.goals]
     }));
-  }, [setStore]);
+
+    // Trigger notification
+    if (student) {
+      if (isNewGoal) {
+        triggerNotifications.goalCreated(student.name, goalWithTimestamps.area);
+      } else {
+        triggerNotifications.goalUpdated(student.name, goalWithTimestamps.area);
+      }
+    }
+  }, [setStore, store.goals, store.students]);
 
   const handleDelete = useCallback((id) => {
     setStore(prev => ({
@@ -960,6 +782,9 @@ function ProgressView({ store, setStore }) {
     const trimmedScore = score.trim();
     if (goalFilter === "all" || !trimmedScore) return;
 
+    const goal = store.goals.find(g => g.id === goalFilter);
+    const student = goal ? store.students.find(s => s.id === goal.studentId) : null;
+
     const newLog = {
       id: uid(),
       goalId: goalFilter,
@@ -974,6 +799,21 @@ function ProgressView({ store, setStore }) {
       lastUpdated: createTimestamp(),
       logs: [newLog, ...prev.logs]
     }));
+
+    // Trigger notifications
+    if (student && goal) {
+      triggerNotifications.progressLogAdded(student.name, goal.area, trimmedScore);
+
+      // Check for achievement (target reached)
+      const scoreNum = parseScore(trimmedScore);
+      const targetNum = parseScore(goal.target);
+      if (scoreNum !== null && targetNum !== null && scoreNum >= targetNum) {
+        triggerNotifications.achievementUnlocked(
+          student.name,
+          `reached the target for ${goal.area} with a score of ${trimmedScore}!`
+        );
+      }
+    }
 
     setScore("");
     setNotes("");
@@ -1120,6 +960,9 @@ function StudentsView({ store, setStore }) {
         lastUpdated: now,
         students: [newStudent, ...prev.students]
       }));
+
+      // Trigger notification for new student
+      triggerNotifications.studentAssigned(trimmedName);
     }
 
     setEditDialog(null);
@@ -1260,6 +1103,47 @@ function Dashboard({ store, stats: statsOverride }) {
     () => statsOverride ?? computeStoreStats(store),
     [statsOverride, store]
   );
+
+  // Check for data gaps on mount
+  useEffect(() => {
+    const checkDataGaps = () => {
+      const now = new Date();
+      const DATA_GAP_THRESHOLD_DAYS = 14; // 2 weeks without data
+
+      store.goals.forEach(goal => {
+        const student = store.students.find(s => s.id === goal.studentId);
+        const logs = store.logs.filter(l => l.goalId === goal.id);
+
+        if (logs.length === 0) return; // Skip goals with no logs yet
+
+        // Find the most recent log
+        const sortedLogs = [...logs].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+        const mostRecentLog = sortedLogs[0];
+        const lastLogDate = new Date(mostRecentLog.dateISO);
+        const daysSinceLastLog = Math.floor((now - lastLogDate) / (1000 * 60 * 60 * 24));
+
+        // Trigger data gap notification if threshold exceeded
+        if (daysSinceLastLog >= DATA_GAP_THRESHOLD_DAYS && student) {
+          // Check if we've already notified about this (to avoid spam)
+          const notifiedKey = `data_gap_notified_${goal.id}_${mostRecentLog.dateISO}`;
+          const alreadyNotified = localStorage.getItem(notifiedKey);
+
+          if (!alreadyNotified) {
+            triggerNotifications.dataGapDetected(student.name, goal.area, daysSinceLastLog);
+            localStorage.setItem(notifiedKey, 'true');
+          }
+        }
+      });
+    };
+
+    // Check on mount
+    checkDataGaps();
+
+    // Check daily
+    const interval = setInterval(checkDataGaps, 24 * 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [store.goals, store.students, store.logs]);
 
   return (
     <div className="space-y-6">
@@ -1561,6 +1445,7 @@ export default function App() {
   const { store, setStore, replaceStore } = usePersistentStore();
   const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [showSearch, setShowSearch] = useState(false);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
   const dataHealth = stats.totalLogs > 0 ? "Active tracking" : "Awaiting logs";
@@ -1591,6 +1476,31 @@ export default function App() {
     setCurrentUserState(null);
   };
 
+  // Keyboard shortcut for search (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Cmd+K (Mac) or Ctrl+K (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Handle navigation from search results
+  const handleSearchNavigation = (type, data) => {
+    if (type === 'student') {
+      setActiveTab('students');
+    } else if (type === 'goal') {
+      setActiveTab('goals');
+    } else if (type === 'log') {
+      setActiveTab('progress');
+    }
+  };
+
   // Show login page if not authenticated
   if (!currentUser) {
     return <LoginPage onLogin={setCurrentUserState} />;
@@ -1619,6 +1529,19 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSearch(true)}
+                className="rounded-xl border-slate-200 bg-white/80 hover:bg-white"
+              >
+                <Search className="mr-2 h-4 w-4" strokeWidth={2} />
+                <span className="hidden sm:inline">Search</span>
+                <kbd className="ml-2 hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono font-semibold text-slate-500 bg-slate-100 rounded border border-slate-300">
+                  ⌘K
+                </kbd>
+              </Button>
+              <NotificationCenter />
               <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:flex">
                 <Sparkles className="h-3.5 w-3.5 text-blue-600" strokeWidth={2} />
                 Guided insights
@@ -1711,10 +1634,47 @@ export default function App() {
                 </div>
               )}
 
-              <div className="flex items-center gap-2 ml-2 pl-2 border-l border-slate-200">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40">
-                  <User className="h-4 w-4 text-slate-600" strokeWidth={2}/>
-                  <span className="text-sm font-medium text-slate-700">{currentUser.name}</span>
+              <div className="rounded-3xl border border-slate-900/20 bg-slate-900 p-8 text-slate-100 shadow-2xl shadow-slate-900/40">
+                <div className="flex items-start justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Workspace Owner</p>
+                    <p className="mt-2 text-lg font-semibold text-white">{currentUser.name}</p>
+                  </div>
+                  <span className="rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-100">Secure</span>
+                </div>
+                <div className="mt-6 space-y-4 text-sm">
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Last sync</span>
+                    <span className="font-medium text-white">{lastUpdatedLabel}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Data health</span>
+                    <span className="font-medium text-white">{dataHealth}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-slate-300">
+                    <span>Active modules</span>
+                    <span className="font-medium text-white">Dashboard · Students · Goals · Progress</span>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                    onClick={() => exportJSON(store)}
+                  >
+                    <Download className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Export data
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-600/30 hover:from-blue-500 hover:to-indigo-400"
+                    onClick={() => document.getElementById('import-input')?.click()}
+                  >
+                    <Upload className="mr-2 h-4 w-4" strokeWidth={2} />
+                    Import data
+                  </Button>
+                  <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
                 </div>
               </div>
             </div>
@@ -1773,6 +1733,14 @@ export default function App() {
             </div>
           </section>
         </main>
+
+        {/* Advanced Search Modal */}
+        <AdvancedSearch
+          isOpen={showSearch}
+          onClose={() => setShowSearch(false)}
+          store={store}
+          onNavigate={handleSearchNavigation}
+        />
       </div>
     </div>
   );
