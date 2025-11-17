@@ -29,6 +29,7 @@ import {
   computeStoreStats
 } from "@/lib/data";
 import { usePersistentStore } from "@/hooks/usePersistentStore";
+import { AdvancedSearch } from "@/components/search/AdvancedSearch";
 
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
@@ -1368,6 +1369,7 @@ export default function App() {
   const { store, setStore, replaceStore } = usePersistentStore();
   const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState("dashboard");
+  const [showSearch, setShowSearch] = useState(false);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
   const dataHealth = stats.totalLogs > 0 ? "Active tracking" : "Awaiting logs";
@@ -1398,6 +1400,31 @@ export default function App() {
     setCurrentUserState(null);
   };
 
+  // Keyboard shortcut for search (Cmd+K / Ctrl+K)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Cmd+K (Mac) or Ctrl+K (Windows/Linux)
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Handle navigation from search results
+  const handleSearchNavigation = (type, data) => {
+    if (type === 'student') {
+      setActiveTab('students');
+    } else if (type === 'goal') {
+      setActiveTab('goals');
+    } else if (type === 'log') {
+      setActiveTab('progress');
+    }
+  };
+
   // Show login page if not authenticated
   if (!currentUser) {
     return <LoginPage onLogin={setCurrentUserState} />;
@@ -1426,6 +1453,18 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowSearch(true)}
+                className="rounded-xl border-slate-200 bg-white/80 hover:bg-white"
+              >
+                <Search className="mr-2 h-4 w-4" strokeWidth={2} />
+                <span className="hidden sm:inline">Search</span>
+                <kbd className="ml-2 hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono font-semibold text-slate-500 bg-slate-100 rounded border border-slate-300">
+                  ⌘K
+                </kbd>
+              </Button>
               <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:flex">
                 <Sparkles className="h-3.5 w-3.5 text-blue-600" strokeWidth={2} />
                 Guided insights
@@ -1617,6 +1656,14 @@ export default function App() {
             </div>
           </section>
         </main>
+
+        {/* Advanced Search Modal */}
+        <AdvancedSearch
+          isOpen={showSearch}
+          onClose={() => setShowSearch(false)}
+          store={store}
+          onNavigate={handleSearchNavigation}
+        />
       </div>
     </div>
   );
