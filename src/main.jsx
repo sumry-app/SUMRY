@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
+import { registerServiceWorker } from './lib/pwaHelper.js'
 
 // Error Boundary Component for Safari compatibility
 class ErrorBoundary extends React.Component {
@@ -82,6 +83,15 @@ try {
       </ErrorBoundary>
     </React.StrictMode>
   );
+
+  // Register service worker for PWA functionality
+  if (import.meta.env.PROD) {
+    registerServiceWorker().then(registration => {
+      if (registration) {
+        console.log('PWA: App is ready for offline use');
+      }
+    });
+  }
 } catch (error) {
   console.error('Failed to render app:', error);
   document.getElementById('root').innerHTML = `
