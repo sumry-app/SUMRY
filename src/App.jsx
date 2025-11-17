@@ -30,6 +30,8 @@ import {
 } from "@/lib/data";
 import { usePersistentStore } from "@/hooks/usePersistentStore";
 import { AdvancedSearch } from "@/components/search/AdvancedSearch";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
+import { triggerNotifications } from "@/lib/notificationManager";
 
 const usersStorageKey = "sumry_users_v1";
 const currentUserKey = "sumry_current_user";
@@ -602,6 +604,9 @@ function GoalsView({ store, setStore }) {
       createdAt: goal.createdAt || now
     };
 
+    const isNewGoal = !store.goals.find(g => g.id === goalWithTimestamps.id);
+    const student = store.students.find(s => s.id === goalWithTimestamps.studentId);
+
     setStore(prev => ({
       ...prev,
       lastUpdated: now,
@@ -609,7 +614,16 @@ function GoalsView({ store, setStore }) {
         ? prev.goals.map(g => g.id === goalWithTimestamps.id ? goalWithTimestamps : g)
         : [goalWithTimestamps, ...prev.goals]
     }));
-  }, [setStore]);
+
+    // Trigger notification
+    if (student) {
+      if (isNewGoal) {
+        triggerNotifications.goalCreated(student.name, goalWithTimestamps.area);
+      } else {
+        triggerNotifications.goalUpdated(student.name, goalWithTimestamps.area);
+      }
+    }
+  }, [setStore, store.goals, store.students]);
 
   const handleDelete = useCallback((id) => {
     setStore(prev => ({
@@ -768,6 +782,9 @@ function ProgressView({ store, setStore }) {
     const trimmedScore = score.trim();
     if (goalFilter === "all" || !trimmedScore) return;
 
+    const goal = store.goals.find(g => g.id === goalFilter);
+    const student = goal ? store.students.find(s => s.id === goal.studentId) : null;
+
     const newLog = {
       id: uid(),
       goalId: goalFilter,
@@ -782,6 +799,21 @@ function ProgressView({ store, setStore }) {
       lastUpdated: createTimestamp(),
       logs: [newLog, ...prev.logs]
     }));
+
+    // Trigger notifications
+    if (student && goal) {
+      triggerNotifications.progressLogAdded(student.name, goal.area, trimmedScore);
+
+      // Check for achievement (target reached)
+      const scoreNum = parseScore(trimmedScore);
+      const targetNum = parseScore(goal.target);
+      if (scoreNum !== null && targetNum !== null && scoreNum >= targetNum) {
+        triggerNotifications.achievementUnlocked(
+          student.name,
+          `reached the target for ${goal.area} with a score of ${trimmedScore}!`
+        );
+      }
+    }
 
     setScore("");
     setNotes("");
@@ -928,6 +960,9 @@ function StudentsView({ store, setStore }) {
         lastUpdated: now,
         students: [newStudent, ...prev.students]
       }));
+
+      // Trigger notification for new student
+      triggerNotifications.studentAssigned(trimmedName);
     }
 
     setEditDialog(null);
@@ -1068,6 +1103,47 @@ function Dashboard({ store, stats: statsOverride }) {
     () => statsOverride ?? computeStoreStats(store),
     [statsOverride, store]
   );
+
+  // Check for data gaps on mount
+  useEffect(() => {
+    const checkDataGaps = () => {
+      const now = new Date();
+      const DATA_GAP_THRESHOLD_DAYS = 14; // 2 weeks without data
+
+      store.goals.forEach(goal => {
+        const student = store.students.find(s => s.id === goal.studentId);
+        const logs = store.logs.filter(l => l.goalId === goal.id);
+
+        if (logs.length === 0) return; // Skip goals with no logs yet
+
+        // Find the most recent log
+        const sortedLogs = [...logs].sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+        const mostRecentLog = sortedLogs[0];
+        const lastLogDate = new Date(mostRecentLog.dateISO);
+        const daysSinceLastLog = Math.floor((now - lastLogDate) / (1000 * 60 * 60 * 24));
+
+        // Trigger data gap notification if threshold exceeded
+        if (daysSinceLastLog >= DATA_GAP_THRESHOLD_DAYS && student) {
+          // Check if we've already notified about this (to avoid spam)
+          const notifiedKey = `data_gap_notified_${goal.id}_${mostRecentLog.dateISO}`;
+          const alreadyNotified = localStorage.getItem(notifiedKey);
+
+          if (!alreadyNotified) {
+            triggerNotifications.dataGapDetected(student.name, goal.area, daysSinceLastLog);
+            localStorage.setItem(notifiedKey, 'true');
+          }
+        }
+      });
+    };
+
+    // Check on mount
+    checkDataGaps();
+
+    // Check daily
+    const interval = setInterval(checkDataGaps, 24 * 60 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [store.goals, store.students, store.logs]);
 
   return (
     <div className="space-y-6">
@@ -1465,6 +1541,7 @@ export default function App() {
                   ⌘K
                 </kbd>
               </Button>
+              <NotificationCenter />
               <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:flex">
                 <Sparkles className="h-3.5 w-3.5 text-blue-600" strokeWidth={2} />
                 Guided insights
