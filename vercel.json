@@ -3,11 +3,6 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": "vite",
-  "git": {
-    "deploymentEnabled": {
-      "claude/fix-code-error-011CV1JX6m1LPt5KkfXMSMoN": true
-    }
-  },
   "rewrites": [
     {
       "source": "/(.*)",
