@@ -34,6 +34,8 @@ import { StatCard, ProgressRing } from "@/components/ui/stat-card";
 import { EmptyState, EmptyHint } from "@/components/ui/empty-state";
 import { usePersistentStore } from "@/hooks/usePersistentStore";
 import { useTheme } from "@/hooks/useTheme";
+import { useToast } from "@/components/ui/Toast";
+import { formatRelativeDate, formatShortDate, formatFullDate } from "@/lib/dates";
 import { AdvancedSearch } from "@/components/search/AdvancedSearch";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { triggerNotifications } from "@/lib/notificationManager";
@@ -397,6 +399,7 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
 }
 
 function GoalDetailDialog({ goal, student, logs, onClose }) {
+  const toast = useToast();
   const sortedLogs = useMemo(() =>
     [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     [logs]
@@ -523,7 +526,7 @@ function GoalDetailDialog({ goal, student, logs, onClose }) {
             <Button variant="outline" onClick={() => {
               const url = `${window.location.origin}?share=${goal.id}`;
               navigator.clipboard.writeText(url);
-              alert('Share link copied!');
+              toast.success('Share link copied to clipboard');
             }} className="border-slate-200">
               <Share2 className="h-4 w-4 mr-2" strokeWidth={2}/>Share Link
             </Button>
@@ -536,7 +539,9 @@ function GoalDetailDialog({ goal, student, logs, onClose }) {
                 {sortedLogs.map(log => (
                   <div key={log.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
                     <div className="flex justify-between mb-2">
-                      <span className="font-medium text-sm">{log.dateISO}</span>
+                      <span className="text-sm font-medium" title={formatFullDate(log.dateISO)}>
+                        {formatShortDate(log.dateISO)}
+                      </span>
                       <span className="text-sm text-slate-600">Score: {log.score || "—"}</span>
                     </div>
                     {log.notes && <p className="text-sm text-slate-600 mb-1">{log.notes}</p>}
@@ -816,6 +821,7 @@ function GoalsView({ store, setStore }) {
 
 // ========== PROGRESS LOGS ==========
 function ProgressView({ store, setStore }) {
+  const toast = useToast();
   const [goalFilter, setGoalFilter] = useState("all");
   const [dateISO, setDateISO] = useState(new Date().toISOString().slice(0, 10));
   const [score, setScore] = useState("");
@@ -828,7 +834,9 @@ function ProgressView({ store, setStore }) {
 
   const exportLogsToCSV = useCallback(() => {
     if (logsForExport.length === 0) {
-      alert('No logs to export for the current filters.');
+      toast.info("Nothing to export", {
+        description: "There are no progress entries matching the current filter.",
+      });
       return;
     }
 
@@ -1022,7 +1030,12 @@ function ProgressView({ store, setStore }) {
                           className="flex items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-sm transition-colors hover:bg-muted/50"
                         >
                           <div className="flex min-w-0 items-center gap-3">
-                            <span className="shrink-0 tabular text-muted-foreground">{log.dateISO}</span>
+                            <span
+                              className="shrink-0 text-muted-foreground"
+                              title={formatFullDate(log.dateISO)}
+                            >
+                              {formatRelativeDate(log.dateISO)}
+                            </span>
                             {log.notes && (
                               <span className="truncate text-xs text-muted-foreground">{log.notes}</span>
                             )}
@@ -1053,6 +1066,7 @@ function ProgressView({ store, setStore }) {
 
 // ========== STUDENTS VIEW ==========
 function StudentsView({ store, setStore }) {
+  const toast = useToast();
   const [editDialog, setEditDialog] = useState(null);
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
@@ -1108,6 +1122,12 @@ function StudentsView({ store, setStore }) {
   };
 
   const handleDelete = (id) => {
+    // Removing a student also removes their goals and every progress entry
+    // behind them, so keep a snapshot and offer it back rather than relying on
+    // the user having read a confirmation.
+    const snapshot = store;
+    const removed = store.students.find(s => s.id === id);
+
     setStore(prev => ({
       ...prev,
       lastUpdated: createTimestamp(),
@@ -1118,6 +1138,12 @@ function StudentsView({ store, setStore }) {
         return goal?.studentId !== id;
       })
     }));
+
+    toast.success(`${removed?.name ?? "Student"} removed`, {
+      description: "Their goals and progress entries were removed too.",
+      action: { label: "Undo", onClick: () => setStore(snapshot) },
+      duration: 9000,
+    });
   };
 
   return (
@@ -1567,7 +1593,12 @@ function Dashboard({ store, stats: statsOverride }) {
                       <p className="text-xs text-muted-foreground">{goal?.area} · scored {log.score}</p>
                     </div>
                   </div>
-                  <span className="shrink-0 text-xs tabular text-muted-foreground">{log.dateISO.slice(5)}</span>
+                  <span
+                    className="shrink-0 text-xs text-muted-foreground"
+                    title={formatFullDate(log.dateISO)}
+                  >
+                    {formatRelativeDate(log.dateISO)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -1831,6 +1862,7 @@ export default function App() {
   const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState("dashboard");
   const { isDark, toggleTheme } = useTheme();
+  const toast = useToast();
   const [showSearch, setShowSearch] = useState(false);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
@@ -1863,10 +1895,17 @@ export default function App() {
         const imported = JSON.parse(evt.target?.result);
         const normalized = normalizeStoreData(imported);
         const stamped = { ...normalized, lastUpdated: createTimestamp() };
+        const previous = store;
         setStore(stamped);
-        alert('Data imported successfully!');
-      } catch (err) {
-        alert('Error importing file');
+        toast.success("Data imported", {
+          description: `${normalized.students.length} students and ${normalized.goals.length} goals loaded.`,
+          action: { label: "Undo", onClick: () => setStore(previous) },
+          duration: 8000,
+        });
+      } catch {
+        toast.error("That file couldn't be read", {
+          description: "Make sure it's a SUMRY export in .json format.",
+        });
       }
     };
     reader.readAsText(file);

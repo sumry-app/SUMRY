@@ -82,32 +82,32 @@ const TOAST_ICONS = {
 
 const toastVariantStyles = {
   [TOAST_VARIANTS.SUCCESS]: {
-    container: 'bg-green-50 border-green-200 dark:bg-green-900/20 dark:border-green-800',
-    icon: 'text-green-600 dark:text-green-400',
-    title: 'text-green-900 dark:text-green-100',
-    description: 'text-green-700 dark:text-green-300',
-    closeButton: 'text-green-500 hover:text-green-700 dark:text-green-400 dark:hover:text-green-200',
+    container: 'bg-card border-success/30',
+    icon: 'text-success',
+    title: 'text-foreground',
+    description: 'text-muted-foreground',
+    closeButton: 'text-muted-foreground hover:text-foreground',
   },
   [TOAST_VARIANTS.ERROR]: {
-    container: 'bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800',
-    icon: 'text-red-600 dark:text-red-400',
-    title: 'text-red-900 dark:text-red-100',
-    description: 'text-red-700 dark:text-red-300',
-    closeButton: 'text-red-500 hover:text-red-700 dark:text-red-400 dark:hover:text-red-200',
+    container: 'bg-card border-destructive/30',
+    icon: 'text-destructive',
+    title: 'text-foreground',
+    description: 'text-muted-foreground',
+    closeButton: 'text-muted-foreground hover:text-foreground',
   },
   [TOAST_VARIANTS.WARNING]: {
-    container: 'bg-amber-50 border-amber-200 dark:bg-amber-900/20 dark:border-amber-800',
-    icon: 'text-amber-600 dark:text-amber-400',
-    title: 'text-amber-900 dark:text-amber-100',
-    description: 'text-amber-700 dark:text-amber-300',
-    closeButton: 'text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-200',
+    container: 'bg-card border-warning/40',
+    icon: 'text-warning',
+    title: 'text-foreground',
+    description: 'text-muted-foreground',
+    closeButton: 'text-muted-foreground hover:text-foreground',
   },
   [TOAST_VARIANTS.INFO]: {
-    container: 'bg-blue-50 border-blue-200 dark:bg-blue-900/20 dark:border-blue-800',
-    icon: 'text-blue-600 dark:text-blue-400',
-    title: 'text-blue-900 dark:text-blue-100',
-    description: 'text-blue-700 dark:text-blue-300',
-    closeButton: 'text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200',
+    container: 'bg-card border-info/30',
+    icon: 'text-info',
+    title: 'text-foreground',
+    description: 'text-muted-foreground',
+    closeButton: 'text-muted-foreground hover:text-foreground',
   },
 };
 
@@ -175,8 +175,8 @@ function Toast({
   return (
     <div
       className={cn(
-        'w-full max-w-sm rounded-lg border shadow-lg overflow-hidden',
-        'transition-all duration-300 ease-in-out',
+        'w-full max-w-sm overflow-hidden rounded-2xl border shadow-float',
+        'transition-all duration-300 ease-spring',
         isExiting
           ? 'opacity-0 scale-95 translate-x-8'
           : 'opacity-100 scale-100 translate-x-0',
@@ -188,9 +188,9 @@ function Toast({
     >
       {/* Progress bar */}
       {!persistent && duration && (
-        <div className="h-1 bg-black/10 dark:bg-white/10">
+        <div className="h-0.5 bg-border">
           <div
-            className="h-full bg-current opacity-50 transition-all duration-50 linear"
+            className={cn('h-full bg-current opacity-70 transition-all duration-50', styles.icon)}
             style={{ width: `${progress}%` }}
           />
         </div>
@@ -222,8 +222,9 @@ function Toast({
             <button
               onClick={action.onClick}
               className={cn(
-                'mt-3 text-sm font-medium underline',
-                'hover:no-underline transition-all',
+                'mt-3 rounded-lg bg-muted px-3 py-1.5 text-sm font-semibold',
+                'transition-colors hover:bg-secondary',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 styles.title
               )}
             >

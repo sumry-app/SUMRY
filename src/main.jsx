@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from './App.jsx'
 import './index.css'
 import { registerServiceWorker } from './lib/pwaHelper.js'
+import { ToastProvider } from './components/ui/Toast.jsx'
 
 // Error Boundary Component for Safari compatibility
 class ErrorBoundary extends React.Component {
@@ -62,7 +63,7 @@ class ErrorBoundary extends React.Component {
               Reload Page
             </button>
             <p style={{ color: '#94a3b8', fontSize: '12px', marginTop: '16px' }}>
-              Try using Chrome or Safari's latest version for the best experience.
+              Try using the latest version of Chrome or Safari for the best experience.
             </p>
           </div>
         </div>
@@ -79,7 +80,9 @@ try {
   root.render(
     <React.StrictMode>
       <ErrorBoundary>
-        <App />
+        <ToastProvider position="bottom-right">
+          <App />
+        </ToastProvider>
       </ErrorBoundary>
     </React.StrictMode>
   );
