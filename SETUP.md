@@ -7,9 +7,10 @@ This guide will get you up and running with SUMRY in minutes.
 Before starting, ensure you have:
 
 - ✅ Node.js 18+ installed (`node --version`)
-- ✅ PostgreSQL 14+ installed (`psql --version`)
 - ✅ npm installed (`npm --version`)
-- ✅ OpenAI API key ([Get one here](https://platform.openai.com/api-keys))
+- ✅ A [Supabase](https://supabase.com) account and project (free tier is fine)
+
+SUMRY has no self-hosted backend — Supabase provides the Postgres database, authentication, and storage. There is no local database, no `server/` directory, and no separate backend process to run.
 
 ---
 
@@ -18,85 +19,37 @@ Before starting, ensure you have:
 ### Step 1: Install Dependencies
 
 ```bash
-# Install frontend dependencies
 npm install
-
-# Install backend dependencies
-cd server
-npm install
-cd ..
 ```
 
-### Step 2: Configure Database
+### Step 2: Create a Supabase Project
 
-```bash
-# Create PostgreSQL database
-createdb sumry_db
+1. Go to [supabase.com](https://supabase.com) and create a new project (or use an existing one).
+2. In the project dashboard, go to **Settings → API** and copy:
+   - **Project URL**
+   - **anon / public key**
 
-# If that fails, try:
-sudo -u postgres createdb sumry_db
-```
+### Step 3: Set Up the Database Schema
 
-### Step 3: Configure Environment Variables
+1. Open the **SQL Editor** in your Supabase project.
+2. Run the contents of `supabase-schema.sql` from this repo. This creates the 16 core tables (`user_profiles`, `students`, `goals`, `progress_logs`, etc.) and enables Row Level Security on all of them.
+3. Run any files under `supabase/migrations/` in order (currently `002_rls_hardening_and_storage.sql`), which fills in RLS policies the initial schema left incomplete and sets up evidence file storage.
 
-#### Frontend (.env) - Already configured!
+### Step 4: Configure Environment Variables
+
+Create a `.env` file in the project root:
+
 ```env
-VITE_API_URL=http://localhost:5000/api
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-#### Backend (server/.env) - Edit this file:
+**These two `VITE_`-prefixed variables are the only environment variables the app needs.** The `VITE_` prefix is required — Vite only inlines environment variables into the frontend build if they start with `VITE_`.
 
-```bash
-# Open in your editor
-nano server/.env
-# or
-code server/.env
-```
-
-**Required changes:**
-1. **DB_PASSWORD**: Set your PostgreSQL password
-2. **OPENAI_API_KEY**: Add your OpenAI API key
-3. **JWT_SECRET**: Change to a secure random string (optional for dev)
-
-**Example:**
-```env
-DB_USER=postgres
-DB_PASSWORD=mypassword123         # ← CHANGE THIS
-OPENAI_API_KEY=sk-abc123...        # ← CHANGE THIS
-JWT_SECRET=my-super-secret-key     # ← CHANGE THIS (production)
-```
-
-### Step 4: Run Database Migrations
-
-```bash
-cd server
-npm run migrate
-```
-
-You should see:
-```
-✅ Database migration completed successfully!
-📊 Tables created: users, students, goals, progress_logs, ...
-```
+You can find both values in your Supabase project under **Settings → API**.
 
 ### Step 5: Start the Application
 
-Open **two terminals**:
-
-**Terminal 1 - Backend:**
-```bash
-cd server
-npm run dev
-```
-
-You should see:
-```
-🚀 SUMRY API Server - Enterprise IEP Management System
-🌐 Server running on: http://localhost:5000
-🤖 AI Features: ENABLED ✅
-```
-
-**Terminal 2 - Frontend:**
 ```bash
 npm run dev
 ```
@@ -106,6 +59,8 @@ You should see:
 VITE ready in 234 ms
 ➜  Local:   http://localhost:5173/
 ```
+
+That's it — one process, no backend to start separately.
 
 ### Step 6: Open the App
 
@@ -117,43 +72,54 @@ Visit **http://localhost:5173** in your browser!
 
 1. **Register an account** - Create a teacher/admin account
 2. **Add a student** - Try adding a test student
-3. **Generate an AI goal** - Use the AI Assistant to create an IEP goal
-4. **Log progress** - Record some progress data
-5. **View analytics** - Check out the dashboard
+3. **Log progress** - Record some progress data
+4. **View analytics** - Check out the dashboard
+
+> **Important — where your data actually goes.** The UI is not yet wired to
+> Supabase. `App.jsx` still stores everything in browser `localStorage` and
+> handles login locally, so the account and student you create above will
+> **not** appear in your Supabase tables, and will only exist in that one
+> browser. The Supabase schema, policies and service layer are all in place;
+> connecting the UI to them is the main outstanding task.
+
+> **Note**: AI-powered goal generation is not yet functional. The feature exists in the UI, but the backend call (`goalsAPI.generateAI()`) currently throws an error directing you to set up a Supabase Edge Function — the old OpenAI integration was part of the Express server that has been removed and hasn't been rebuilt yet.
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Database Connection Error
+### "Missing Supabase environment variables" error
 
-**Error**: `connection refused` or `authentication failed`
-
-**Solution**:
-1. Verify PostgreSQL is running: `pg_isready`
-2. Check your password in `server/.env`
-3. Try connecting manually: `psql -U postgres sumry_db`
-
-### OpenAI API Error
-
-**Error**: `invalid_api_key` or AI features not working
+**Cause**: `VITE_SUPABASE_URL` or `VITE_SUPABASE_ANON_KEY` is missing or misnamed in `.env`.
 
 **Solution**:
-1. Verify your API key is correct in `server/.env`
-2. Check you have credits: https://platform.openai.com/account/usage
-3. The app will use fallback templates if AI is unavailable
+1. Confirm `.env` exists in the project root (not inside `src/`).
+2. Confirm both variable names start with `VITE_` exactly as shown above.
+3. Restart `npm run dev` after editing `.env` — Vite only reads env files at startup.
+
+### Supabase auth/login errors
+
+**Error**: `Invalid login credentials`, `Email not confirmed`, or similar
+
+**Solution**:
+1. Check that email confirmation isn't blocking sign-in — in Supabase, go to **Authentication → Providers → Email** and disable "Confirm email" for local development if you want to skip it.
+2. Verify the project URL/anon key in `.env` match the Supabase project where you created the account.
+
+### Database errors ("permission denied for table ...")
+
+**Cause**: Row Level Security is blocking the query — usually a missing policy or an issue applying the migration.
+
+**Solution**:
+1. Confirm you ran both `supabase-schema.sql` and everything in `supabase/migrations/`, in order.
+2. Check the Supabase dashboard **Authentication** tab to confirm you're signed in as a user with a matching `user_profiles` row.
 
 ### Port Already in Use
 
-**Error**: `EADDRINUSE: address already in use :::5000`
+**Error**: `Port 5173 is in use`
 
-**Solution**:
+**Solution**: Vite will automatically try the next available port, or you can free it:
 ```bash
-# Find and kill the process
-lsof -ti:5000 | xargs kill -9
-
-# Or change the port in server/.env
-PORT=5001
+lsof -ti:5173 | xargs kill -9
 ```
 
 ### Module Not Found
@@ -164,24 +130,23 @@ PORT=5001
 ```bash
 # Reinstall dependencies
 npm install
-cd server && npm install
 ```
 
 ---
 
 ## ✅ Verify Installation
 
-Run these commands to verify everything is working:
-
 ```bash
-# Check database
-psql sumry_db -c "SELECT COUNT(*) FROM users;"
-
-# Check backend health
-curl http://localhost:5000/health
-
-# Check frontend build
+# Check the frontend builds cleanly
 npm run build
+
+# Run the test suite
+npm test
+```
+
+To verify the database, open the Supabase dashboard's **Table Editor** and confirm the tables from `supabase-schema.sql` exist, or run a query in the SQL Editor:
+```sql
+select count(*) from user_profiles;
 ```
 
 ---
@@ -189,26 +154,21 @@ npm run build
 ## 🔧 Development Commands
 
 ```bash
-# Frontend
 npm run dev          # Start dev server
 npm test             # Run tests
 npm run build        # Production build
 npm run lint         # Lint code
-
-# Backend
-cd server
-npm run dev          # Start dev server (nodemon)
-npm test             # Run tests
-npm run migrate      # Run database migrations
 ```
+
+There is no backend `npm run dev`, `npm run migrate`, or `server/` directory to manage — schema changes are applied directly to your Supabase project via the SQL Editor or the Supabase CLI.
 
 ---
 
 ## 📚 Next Steps
 
 - Read the [README.md](./README.md) for complete documentation
-- Check out the [API Documentation](./README.md#-api-documentation)
-- Explore the database schema in `server/src/config/schema.sql`
+- Review the Supabase service layer in `src/services/` (`supabaseAuth.js`, `supabaseStudents.js`, `supabaseGoals.js`, `supabaseProgress.js`)
+- Explore the database schema in `supabase-schema.sql` and `supabase/migrations/`
 - Set up testing with `npm test`
 
 ---

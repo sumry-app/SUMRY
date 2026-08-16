@@ -16,7 +16,7 @@ export default defineConfig({
         'tests/',
         '*.config.js',
         'dist/',
-        'server/'
+        'supabase/'
       ]
     }
   },

@@ -36,59 +36,25 @@ Complete guide for deploying SUMRY IEP Management System to production.
 ### Security
 
 - [x] Environment variables configured
-- [x] HTTPS enabled
-- [x] CORS configured properly
-- [x] Rate limiting enabled
+- [x] HTTPS enabled (Vercel + Supabase default to HTTPS)
+- [x] Row Level Security policies enabled on all Supabase tables
 - [x] Input validation implemented
-- [x] SQL injection prevention
 - [x] XSS protection enabled
 
 ## Environment Setup
 
+SUMRY has no self-hosted backend. There is exactly one set of environment variables, consumed by the Vite frontend build.
+
 ### Frontend Environment Variables
 
-Create `.env.production`:
+Set these in your Vercel project settings (or a local `.env.production` for a manual build) — both **must** be prefixed `VITE_` for Vite to inline them into the build:
 
 ```bash
-VITE_API_URL=https://api.yourcompany.com
-VITE_APP_NAME=SUMRY
-VITE_ENABLE_ANALYTICS=true
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-### Backend Environment Variables
-
-Create `server/.env.production`:
-
-```bash
-# Server
-NODE_ENV=production
-PORT=5000
-
-# Database
-DB_HOST=your-db-host.com
-DB_PORT=5432
-DB_NAME=sumry_production
-DB_USER=sumry_user
-DB_PASSWORD=your-secure-password
-
-# JWT
-JWT_SECRET=your-very-secure-random-string-at-least-32-characters
-JWT_EXPIRES_IN=7d
-
-# OpenAI (optional)
-OPENAI_API_KEY=sk-your-openai-key
-
-# Security
-RATE_LIMIT_WINDOW_MS=900000
-RATE_LIMIT_MAX_REQUESTS=100
-CORS_ORIGIN=https://yourapp.com
-
-# Email (optional)
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASS=your-app-password
-```
+No `JWT_SECRET`, database credentials, `OPENAI_API_KEY`, or `CORS_ORIGIN` are needed — there is no backend process for them to configure. The Supabase anon key is safe to ship in the frontend bundle; Row Level Security policies (not the key) are what restrict data access.
 
 ## Build Configuration
 
@@ -103,9 +69,6 @@ npm test
 
 # Build frontend
 npm run build
-
-# Build backend (if applicable)
-cd server && npm ci && npm run build
 ```
 
 ### Optimize Build
@@ -135,21 +98,24 @@ ls -lh dist/assets
 
 ## Deployment Options
 
-### Option 1: Vercel (Recommended for Frontend)
+### Option 1: Vercel (Recommended — this is how SUMRY is actually deployed)
 
-**Pros**: Zero config, auto-deploy, CDN, free SSL
+**Pros**: Zero config, auto-deploy on push to `main`, CDN, free SSL
 
 ```bash
-# Install Vercel CLI
-npm i -g vercel
+# Push to main, Vercel builds automatically (npm run build -> dist/)
+git push origin main
 
-# Deploy
+# Or deploy manually
+npm i -g vercel
 vercel --prod
 
-# Environment variables (set in Vercel dashboard)
-# - VITE_API_URL
-# - NODE_ENV=production
+# Environment variables (set in Vercel dashboard → Project Settings → Environment Variables)
+# - VITE_SUPABASE_URL
+# - VITE_SUPABASE_ANON_KEY
 ```
+
+There is no separate backend deploy step — Supabase is a hosted service, not something SUMRY provisions or deploys.
 
 **Configuration** (`vercel.json`):
 
@@ -228,65 +194,50 @@ docker run -p 80:80 sumry:latest
 
 ## Database Setup
 
-### PostgreSQL Setup
+### Supabase Setup
 
-```sql
--- Create database
-CREATE DATABASE sumry_production;
+The database is a hosted Supabase Postgres instance — there is no server to provision. Apply the schema directly to your production Supabase project:
 
--- Create user
-CREATE USER sumry_user WITH ENCRYPTED PASSWORD 'your-secure-password';
+1. Open the **SQL Editor** in your production Supabase project.
+2. Run `supabase-schema.sql` from this repo — creates all 16 tables and enables Row Level Security.
+3. Run each file under `supabase/migrations/` in order (currently `002_rls_hardening_and_storage.sql`).
+4. Double-check RLS policies are enabled on every table (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`) before going live — a table with RLS enabled and no matching policy denies all access, while a table *without* RLS enabled is fully open to anyone with the anon key.
 
--- Grant privileges
-GRANT ALL PRIVILEGES ON DATABASE sumry_production TO sumry_user;
-
--- Connect and run migrations
-\c sumry_production
-
--- Run schema (from server/src/config/schema.sql)
-\i schema.sql
-```
-
-### Run Migrations
-
-```bash
-cd server
-npm run migrate
-```
+Use a **separate Supabase project** for production vs. development so schema experiments never touch production data.
 
 ### Backup Strategy
 
-```bash
-# Daily backups
-pg_dump sumry_production > backup-$(date +%Y%m%d).sql
+Supabase Pro and higher plans include automatic daily backups and point-in-time recovery, configurable in **Project Settings → Database → Backups**. For manual backups:
 
-# Restore from backup
-psql sumry_production < backup-20240115.sql
+```bash
+# Requires the Supabase CLI, linked to your project
+supabase db dump -f backup-$(date +%Y%m%d).sql
 ```
 
 ## Security Considerations
 
 ### SSL/TLS
 
-- ✅ Force HTTPS in production
-- ✅ Use valid SSL certificates (Let's Encrypt)
-- ✅ Enable HSTS headers
+- ✅ Force HTTPS in production (Vercel and Supabase both enforce HTTPS by default)
+- ✅ Certificates are provisioned automatically by Vercel
 
 ### Headers
 
-Add security headers (using Helmet.js):
+There is no Express server to add Helmet.js middleware to. On Vercel, add security headers via `vercel.json` instead:
 
-```javascript
-app.use(helmet({
-  contentSecurityPolicy: {
-    directives: {
-      defaultSrc: ["'self'"],
-      styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https:"],
-    },
-  },
-}));
+```json
+{
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options", "value": "DENY" },
+        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" }
+      ]
+    }
+  ]
+}
 ```
 
 ### Secrets Management
@@ -380,18 +331,10 @@ getTTFB(sendToAnalytics);
 
 ### Health Checks
 
-```javascript
-// server/src/index.js
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    database: 'connected', // check DB connection
-    version: process.env.APP_VERSION
-  });
-});
-```
+There is no backend process to expose a `/health` endpoint from. Monitor availability at two levels instead:
+
+- **Frontend**: use an uptime monitor (e.g. Uptime Robot) against the deployed Vercel URL.
+- **Database**: use Supabase's built-in project health/status dashboard, or run a lightweight query (e.g. `select 1`) from a scheduled check against `VITE_SUPABASE_URL`'s REST endpoint.
 
 ## Post-Deployment
 
@@ -427,15 +370,14 @@ npm run build
 
 For deployment issues:
 
-1. Check application logs
-2. Verify environment variables
-3. Test database connection
-4. Review security settings
-5. Check network/firewall rules
+1. Check Vercel build/deploy logs
+2. Verify `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are set correctly in Vercel
+3. Check the Supabase dashboard for database/auth errors and RLS policy issues
+4. Review browser console for client-side errors
 
 ## Resources
 
 - [Vercel Deployment Docs](https://vercel.com/docs)
-- [PostgreSQL Production Checklist](https://wiki.postgresql.org/wiki/Production_Checklist)
-- [Node.js Security Best Practices](https://nodejs.org/en/docs/guides/security/)
+- [Supabase Docs](https://supabase.com/docs)
+- [Supabase Row Level Security Guide](https://supabase.com/docs/guides/auth/row-level-security)
 - [Web.dev Performance](https://web.dev/performance/)

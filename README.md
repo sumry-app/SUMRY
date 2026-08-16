@@ -5,24 +5,44 @@
 SUMRY is a comprehensive, enterprise-grade web application designed for special education teachers and professionals to manage IEP goals, track student progress, and leverage AI for data-driven insights.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Node](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org)
 [![React](https://img.shields.io/badge/react-18.3.1-blue.svg)](https://reactjs.org)
+[![Supabase](https://img.shields.io/badge/backend-Supabase-3ECF8E.svg)](https://supabase.com)
+
+---
+
+## ⚠️ Current status: migration in progress
+
+The Supabase backend is provisioned and a complete service layer exists under
+`src/services/`, **but the UI is not connected to it yet.** `App.jsx` still
+persists data to browser `localStorage` (via `usePersistentStore`) and uses a
+local `sumry_users_v1` login scheme rather than Supabase Auth.
+
+Practical consequences today:
+
+- Data is stored per-browser. It is not synced across devices, not shared
+  between users, and not backed up server-side.
+- Nothing in `src/lib/supabase.js` or the `supabase*.js` services is reachable
+  from the app entry point, so it is tree-shaken out of the production bundle.
+- The schema, Row Level Security policies and storage bucket described below
+  are real and applied — they are simply not exercised by the UI yet.
+
+Connecting the UI to the service layer is the main outstanding task. Everything
+below describes the intended and already-implemented backend architecture.
 
 ---
 
 ## ✨ Key Features
 
-### 🤖 **AI-Powered Features** (Cornerstone)
-- **GPT-4 Goal Generation**: Automatically generate research-based, measurable IEP goals using OpenAI
-- **Progress Predictions**: AI-powered analysis of student progress trends
-- **Accommodation Suggestions**: Intelligent recommendations for student accommodations
-- **Data-Driven Insights**: Advanced analytics for informed decision-making
+### 🤖 **AI-Powered Features**
+- **GPT-4 Goal Generation**: ⚠️ **Not yet functional.** The AI goal-generation flow is wired up in the UI and service layer, but the OpenAI-calling backend was removed along with the Express server and has not yet been reimplemented as a Supabase Edge Function. Calling it currently throws an explanatory error.
+- **Progress Predictions**: Trend analysis (linear regression) over logged progress data
+- **Data-Driven Insights**: Analytics dashboards for informed decision-making
 
 ### 🏢 **Enterprise Features**
 - **Role-Based Access Control (RBAC)**: Admin, Teacher, Therapist, Parent, and Viewer roles
 - **Team Collaboration**: Multi-user access with granular permissions
-- **Audit Logging**: Comprehensive compliance tracking for all actions
-- **Security Hardening**: JWT authentication, rate limiting, Helmet.js, CORS protection
+- **Row Level Security**: Postgres RLS policies (via Supabase) scope every table to the authenticated user/organization
+- **Audit Logging**: `audit_logs` table in the schema for compliance tracking
 
 ### 📊 **IEP Management**
 - **Student Profiles**: Manage student information, disabilities, and grade levels
@@ -54,12 +74,11 @@ SUMRY is a comprehensive, enterprise-grade web application designed for special 
 - **Axios** - HTTP client with interceptors
 
 #### Backend
-- **Node.js 18+** - JavaScript runtime
-- **Express.js 4** - Web framework with middleware
-- **PostgreSQL** - Enterprise relational database
-- **JWT** - Secure authentication tokens
-- **bcryptjs** - Password hashing (12 rounds)
-- **OpenAI GPT-4 API** - AI-powered features
+- **Supabase** - Hosted Postgres database, authentication, and storage (no self-hosted server)
+- **Supabase Auth** - Email/password authentication with session tokens
+- **Row Level Security (RLS)** - Postgres policies enforce per-user/organization data access
+- **Supabase Storage** - File/evidence storage
+- **Supabase Edge Functions** - Planned home for the OpenAI-powered AI goal generation (not yet deployed)
 
 #### Testing & Quality
 - **Vitest** - Fast unit testing framework
@@ -84,34 +103,21 @@ SUMRY/
 │   │   ├── dashboard/            # Analytics dashboard
 │   │   ├── shared/               # Shared components
 │   │   └── layout/               # Layout components
+│   ├── lib/
+│   │   └── supabase.js           # Supabase client (createClient)
 │   ├── store/                    # Zustand state management
 │   │   ├── authStore.js          # Authentication state
 │   │   └── dataStore.js          # Application data state
-│   ├── services/                 # API and services
-│   │   ├── api.js                # Axios API client
+│   ├── services/                 # Supabase-backed service layer
+│   │   ├── api.js                # Re-exports the services below as authAPI/studentsAPI/goalsAPI/progressAPI
+│   │   ├── supabaseAuth.js       # Auth (sign up, sign in, profile)
+│   │   ├── supabaseStudents.js   # Student CRUD
+│   │   ├── supabaseGoals.js      # Goal CRUD + progress prediction
+│   │   ├── supabaseProgress.js   # Progress log CRUD + analytics
 │   │   └── pdfExport.js          # PDF generation service
-│   ├── App.jsx                   # Main application (1,448 lines)
+│   ├── App.jsx                   # Main application
 │   └── main.jsx                  # Entry point
-├── server/                       # Backend source code
-│   ├── src/
-│   │   ├── controllers/          # Request handlers
-│   │   │   ├── auth.controller.js        # Authentication
-│   │   │   ├── students.controller.js    # Student CRUD
-│   │   │   ├── goals.controller.js       # Goal CRUD + AI
-│   │   │   └── progress.controller.js    # Progress tracking
-│   │   ├── middleware/           # Express middleware
-│   │   │   └── auth.js           # JWT auth + RBAC
-│   │   ├── routes/               # API routes
-│   │   ├── services/             # Business logic
-│   │   │   └── openai.service.js # OpenAI GPT-4 integration
-│   │   ├── config/               # Configuration
-│   │   │   ├── database.js       # PostgreSQL connection
-│   │   │   ├── schema.sql        # 17 table schema
-│   │   │   └── migrate.js        # Migration script
-│   │   ├── utils/                # Utilities
-│   │   │   └── audit.js          # Audit logging
-│   │   └── index.js              # Express server
-│   └── package.json
+├── supabase-schema.sql           # Initial Postgres schema (tables, RLS policies)
 ├── tests/                        # Testing infrastructure
 │   ├── setup.js                  # Test configuration
 │   ├── unit/                     # Component tests
@@ -123,6 +129,8 @@ SUMRY/
 └── package.json                  # Frontend dependencies
 ```
 
+There is no `server/` directory and no separate backend to run — Supabase (hosted Postgres + Auth + Storage) is the entire backend.
+
 ---
 
 ## 🚀 Getting Started
@@ -130,9 +138,8 @@ SUMRY/
 ### Prerequisites
 
 - **Node.js 18+** ([Download](https://nodejs.org))
-- **PostgreSQL 14+** ([Download](https://www.postgresql.org/download/))
 - **npm or yarn**
-- **OpenAI API Key** ([Get one here](https://platform.openai.com/api-keys))
+- **A Supabase project** ([Create one here](https://supabase.com)) — provides the Postgres database, authentication, and storage
 
 ### Installation
 
@@ -143,49 +150,26 @@ git clone https://github.com/yourusername/SUMRY.git
 cd SUMRY
 ```
 
-#### 2. Frontend Setup
+#### 2. Install Dependencies
 
 ```bash
-# Install dependencies
 npm install
-
-# Create environment file
-echo "VITE_API_URL=http://localhost:5000/api" > .env
 ```
 
-#### 3. Backend Setup
+#### 3. Configure Environment Variables
 
-```bash
-cd server
+Create a `.env` file in the project root:
 
-# Install dependencies
-npm install
-
-# Create environment file from example
-cp .env.example .env
-
-# Edit .env and configure:
-# - Database credentials
-# - JWT secret
-# - OpenAI API key
+```env
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-#### 4. Database Setup
+Both variables come from your Supabase project's Settings → API page. They **must** be prefixed with `VITE_` so Vite inlines them into the frontend build — no other environment variables are required.
 
-```bash
-# Create database
-createdb sumry_db
+#### 4. Set Up the Database
 
-# Run migrations
-cd server
-npm run migrate
-```
-
-This creates 17 tables including:
-- users, students, goals, progress_logs
-- team_members, accommodations, evidence
-- audit_logs, ai_suggestions
-- And 8 more supporting tables
+In the Supabase SQL Editor (or via the Supabase CLI), run `supabase-schema.sql` against your project. This creates the 16 core tables (`user_profiles`, `students`, `goals`, `progress_logs`, `accommodations`, `evidence`, `audit_logs`, `ai_suggestions`, and more) along with Row Level Security policies. Additional schema changes are tracked as migrations under `supabase/migrations/`.
 
 ---
 
@@ -194,36 +178,11 @@ This creates 17 tables including:
 ### Frontend Environment (.env)
 
 ```env
-VITE_API_URL=http://localhost:5000/api
+VITE_SUPABASE_URL=https://your-project-ref.supabase.co
+VITE_SUPABASE_ANON_KEY=your-supabase-anon-key
 ```
 
-### Backend Environment (server/.env)
-
-```env
-# Server Configuration
-NODE_ENV=development
-PORT=5000
-
-# Database Configuration
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=sumry_db
-DB_USER=your_username
-DB_PASSWORD=your_password
-
-# JWT Configuration
-JWT_SECRET=generate-a-secure-64-character-secret-key-here
-JWT_EXPIRES_IN=7d
-
-# OpenAI Configuration (REQUIRED for AI features!)
-OPENAI_API_KEY=sk-your-openai-api-key-here
-OPENAI_MODEL=gpt-4-turbo-preview
-
-# CORS Configuration
-CORS_ORIGIN=http://localhost:5173
-```
-
-**⚠️ IMPORTANT**: Change `JWT_SECRET` to a strong random string in production!
+There is no separate backend `.env` file — Supabase is a hosted service, and the anon key is safe to expose in the frontend because Row Level Security policies enforce access control server-side.
 
 ---
 
@@ -231,18 +190,10 @@ CORS_ORIGIN=http://localhost:5173
 
 ### Development Mode
 
-**Terminal 1 - Backend Server:**
-```bash
-cd server
-npm run dev
-```
-Backend runs on **http://localhost:5000**
-
-**Terminal 2 - Frontend:**
 ```bash
 npm run dev
 ```
-Frontend runs on **http://localhost:5173**
+Frontend runs on **http://localhost:5173** and talks directly to your Supabase project — there is no local backend process to start.
 
 ### Production Build
 
@@ -250,194 +201,46 @@ Frontend runs on **http://localhost:5173**
 # Build frontend
 npm run build
 
-# Preview frontend
+# Preview the production build locally
 npm run preview
-
-# Start backend (production)
-cd server
-NODE_ENV=production npm start
 ```
 
 ---
 
-## 📚 API Documentation
+## 📚 Service Layer
 
-### Base URL
-```
-http://localhost:5000/api
-```
+There is no REST API — the frontend talks directly to Supabase (Postgres + Auth) via `@supabase/supabase-js`, with Row Level Security policies enforcing access control. The service layer in `src/services/` wraps those Supabase calls behind the same function names the app used to call on the old Express API, re-exported from `src/services/api.js`:
 
-### Authentication Endpoints
+### `authAPI` (`src/services/supabaseAuth.js`)
+- `login(email, password)` — `supabase.auth.signInWithPassword`, then loads the `user_profiles` row
+- `register(userData)` — `supabase.auth.signUp` with profile fields in user metadata
+- `getProfile()` — current user + their `user_profiles` row
+- `updateProfile(userData)` — updates `user_profiles`
+- `changePassword(currentPassword, newPassword)` — `supabase.auth.updateUser`
 
-#### POST `/api/auth/register`
-Create a new user account
+### `studentsAPI` (`src/services/supabaseStudents.js`)
+- `getAll()` — active students for the current user, with goal counts
+- `getById(studentId)`
+- `create(studentData)`
+- `update(studentId, studentData)`
+- `delete(studentId)` — soft delete (`is_active = false`)
+- `addTeamMember(studentId, memberData)`
 
-**Request:**
-```json
-{
-  "email": "teacher@school.edu",
-  "password": "securePassword123!",
-  "firstName": "Jane",
-  "lastName": "Doe",
-  "role": "teacher",
-  "organization": "Springfield Elementary"
-}
-```
+### `goalsAPI` (`src/services/supabaseGoals.js`)
+- `getByStudent(studentId)`
+- `getById(goalId)`
+- `create(goalData)`
+- `update(goalId, goalData)`
+- `delete(goalId)`
+- `getProgressPrediction(goalId)` — client-side linear regression over logged scores
+- `generateAI(aiData)` — ⚠️ **not functional yet.** Currently throws `"AI Goal Generation requires Supabase Edge Function setup"`. The old OpenAI integration lived in the deleted `server/src/services/openai.service.js` and needs to be reimplemented as a Supabase Edge Function before this works again.
 
-**Response:**
-```json
-{
-  "message": "Registration successful",
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "user": {
-    "id": "uuid",
-    "email": "teacher@school.edu",
-    "firstName": "Jane",
-    "lastName": "Doe",
-    "role": "teacher",
-    "organization": "Springfield Elementary"
-  }
-}
-```
-
-#### POST `/api/auth/login`
-Authenticate user
-
-**Request:**
-```json
-{
-  "email": "teacher@school.edu",
-  "password": "securePassword123!"
-}
-```
-
-### Student Endpoints
-
-#### GET `/api/students`
-Get all students for current user
-
-**Headers:**
-```
-Authorization: Bearer <token>
-```
-
-**Response:**
-```json
-{
-  "students": [
-    {
-      "id": "uuid",
-      "first_name": "John",
-      "last_name": "Smith",
-      "grade_level": "3rd Grade",
-      "disability_classification": "Specific Learning Disability",
-      "active_goals_count": 3
-    }
-  ]
-}
-```
-
-#### POST `/api/students`
-Create new student
-
-**Request:**
-```json
-{
-  "firstName": "John",
-  "lastName": "Smith",
-  "gradeLevel": "3rd Grade",
-  "disabilityClassification": "Specific Learning Disability",
-  "dateOfBirth": "2015-08-15"
-}
-```
-
-### Goal Endpoints
-
-#### POST `/api/goals/generate-ai` 🤖
-**AI-Powered Goal Generation (Cornerstone Feature)**
-
-**Request:**
-```json
-{
-  "studentId": "uuid",
-  "goalArea": "Reading",
-  "currentLevel": "Currently reading at 45 words per minute with 80% accuracy",
-  "additionalContext": "Struggles with multisyllabic words"
-}
-```
-
-**Response:**
-```json
-{
-  "message": "AI goal generated successfully",
-  "goal": {
-    "id": "uuid",
-    "student_id": "uuid",
-    "area": "Reading",
-    "description": "Given grade-level text, student will read with 95% accuracy at 80 words per minute as measured by curriculum-based measures.",
-    "baseline_value": 45,
-    "baseline_description": "Currently reads at 45 WPM with 80% accuracy",
-    "target_value": 80,
-    "target_description": "Read fluently at 80 WPM with 95% accuracy",
-    "metric_unit": "words per minute",
-    "ai_generated": true
-  },
-  "aiMetadata": {
-    "tokensUsed": 847,
-    "suggestedAccommodations": [
-      "Extended time for reading tasks",
-      "Audio support for complex texts",
-      "Highlighted or enlarged text"
-    ],
-    "progressMonitoringStrategy": "Weekly 1-minute timed readings using curriculum-based measures",
-    "recommendedFrequency": "Weekly",
-    "researchBasis": "Evidence-based reading fluency practices (National Reading Panel, 2000)"
-  }
-}
-```
-
-#### GET `/api/goals/student/:studentId`
-Get all goals for a student
-
-#### GET `/api/goals/:goalId/predict`
-Get AI progress prediction for a goal
-
-### Progress Endpoints
-
-#### POST `/api/progress`
-Log progress for a goal
-
-**Request:**
-```json
-{
-  "goalId": "uuid",
-  "logDate": "2025-01-15",
-  "score": 52,
-  "notes": "Improved accuracy with shorter passages",
-  "accommodationIds": ["uuid1", "uuid2"]
-}
-```
-
-#### GET `/api/progress/analytics/:studentId`
-Get comprehensive analytics for a student
-
-**Response:**
-```json
-{
-  "analytics": {
-    "goals": {
-      "total_goals": 5,
-      "active_goals": 3,
-      "completed_goals": 2
-    },
-    "logs": {
-      "total_logs": 47
-    },
-    "recentActivity": [...],
-    "goalProgress": [...]
-  }
-}
-```
+### `progressAPI` (`src/services/supabaseProgress.js`)
+- `getByGoal(goalId)`
+- `create(logData)` — also links any `accommodationIds` via `progress_log_accommodations`
+- `update(logId, logData)`
+- `delete(logId)`
+- `getAnalytics(studentId)` — goal counts, total logs, and recent activity for a student
 
 ---
 
@@ -485,34 +288,27 @@ test('renders button with text', () => {
 ## 🔒 Security Features
 
 ### Authentication & Authorization
-- ✅ **JWT Tokens** with 7-day expiry
-- ✅ **bcrypt Password Hashing** (12 rounds)
-- ✅ **Role-Based Access Control** (5 roles)
-- ✅ **Secure Session Management**
-
-### API Security
-- ✅ **Helmet.js** - Security headers
-- ✅ **CORS** - Cross-origin protection
-- ✅ **Rate Limiting** - 100 requests/15min
-- ✅ **SQL Injection Prevention** - Parameterized queries
-- ✅ **XSS Protection** - Input validation
+- ✅ **Supabase Auth** - Email/password authentication, managed session tokens
+- ✅ **Row Level Security (RLS)** - Postgres policies scope every query to the authenticated user, their students, and their team
+- ✅ **Role-Based Access Control** - Admin, Teacher, Therapist, Parent, and Viewer roles
+- ✅ **SECURITY DEFINER helper functions** - centralize team-membership access checks and avoid RLS policy recursion (see `supabase/migrations/002_rls_hardening_and_storage.sql`)
 
 ### Compliance
-- ✅ **Audit Logs** - All actions tracked
-- ✅ **FERPA Ready** - Student data privacy
-- ✅ **Soft Deletes** - Data retention
-- ✅ **IP & User Agent Logging**
+- ⚠️ **Audit Logs** - `audit_logs` table and RLS policy exist in the schema; the app does not yet write to it
+- ✅ **FERPA Ready** - Student data privacy via RLS
+- ✅ **Soft Deletes** - Data retention (`is_active` flag on students)
 
 ---
 
 ## 📊 Database Schema
 
-### Core Tables (17 total)
+### Core Tables (16 total)
 
-**users** - User accounts and authentication
+Defined in `supabase-schema.sql`, with Row Level Security enabled on every table and hardened by `supabase/migrations/002_rls_hardening_and_storage.sql`.
+
+**user_profiles** - User accounts (extends Supabase Auth users)
 ```sql
-id, email, password_hash, first_name, last_name, role,
-organization, is_active, created_at
+id, first_name, last_name, role, organization, created_at
 ```
 
 **students** - Student profiles
@@ -524,7 +320,7 @@ created_by, organization, is_active
 **goals** - IEP goals
 ```sql
 id, student_id, area, description, baseline_value, target_value,
-metric_unit, status, ai_generated, ai_prompt
+metric_unit, status, ai_generated, created_by
 ```
 
 **progress_logs** - Progress data points
@@ -532,80 +328,50 @@ metric_unit, status, ai_generated, ai_prompt
 id, goal_id, log_date, score, notes, logged_by
 ```
 
-**audit_logs** - Compliance tracking
+**audit_logs** - Compliance tracking (schema only — not yet written to by the app)
 ```sql
 id, user_id, action, entity_type, entity_id, old_values,
 new_values, ip_address, user_agent, created_at
 ```
 
-**ai_suggestions** - AI usage tracking
+**ai_suggestions** - AI usage tracking (for when Edge Function-based generation ships)
 ```sql
 id, user_id, student_id, suggestion_type, prompt,
 response, tokens_used, created_at
 ```
 
-See `server/src/config/schema.sql` for complete schema.
+Other tables include `team_members`, `accommodations`, `progress_log_accommodations`, `evidence`, `present_levels`, `service_logs`, `behavior_logs`, `assessments`, `compliance_items`, and `comments`. See `supabase-schema.sql` for the complete schema and `supabase/migrations/` for changes applied since.
 
 ---
 
 ## 🚢 Deployment
 
-### Option 1: Railway (Recommended)
+SUMRY deploys as a static frontend — there is no backend to host.
 
-**Backend:**
+**Frontend (Vercel):**
 ```bash
-cd server
-railway login
-railway up
-```
+# Push to main — Vercel auto-builds via vercel.json
+# (buildCommand: npm run build, outputDirectory: dist)
+git push origin main
 
-**Database:**
-- Add PostgreSQL plugin in Railway dashboard
-- Environment variables are auto-configured
-
-**Frontend:**
-```bash
-# Build
-npm run build
-
-# Deploy to Vercel
+# Or deploy manually
+npm i -g vercel
 vercel --prod
 ```
 
-### Option 2: Traditional VPS
+Set these two environment variables in the Vercel project settings (Project → Settings → Environment Variables):
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
 
-```bash
-# On Ubuntu 22.04
-sudo apt update
-sudo apt install nodejs npm postgresql nginx
-
-# Clone and setup
-git clone <repo>
-cd SUMRY
-npm install
-cd server && npm install
-
-# Setup PostgreSQL
-sudo -u postgres createdb sumry_db
-npm run migrate
-
-# Use PM2 for process management
-npm install -g pm2
-cd server
-pm2 start src/index.js --name sumry-api
-pm2 save
-pm2 startup
-```
+**Database:** Your Supabase project is already hosted — no migration step is needed at deploy time. Apply `supabase-schema.sql` and any files under `supabase/migrations/` to your Supabase project once (via the SQL Editor or Supabase CLI), independent of frontend deploys.
 
 ### Environment Checklist
 
 **Production:**
-- ✅ `NODE_ENV=production`
-- ✅ Strong `JWT_SECRET` (64+ chars)
-- ✅ Database credentials secured
-- ✅ `OPENAI_API_KEY` configured
-- ✅ HTTPS enabled
-- ✅ CORS_ORIGIN set to frontend URL
+- ✅ `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` set in Vercel
+- ✅ Supabase schema + migrations applied to the production project
+- ✅ Row Level Security policies verified on all tables
+- ✅ HTTPS enabled (default on Vercel and Supabase)
 
 ---
 
@@ -613,14 +379,14 @@ pm2 startup
 
 ### AI Goal Generation
 
-The cornerstone feature uses OpenAI GPT-4 to generate:
+⚠️ **Not currently functional.** The plan is for a Supabase Edge Function to call OpenAI GPT-4 and generate:
 - Research-based goal statements
 - Appropriate baselines and targets
 - Suggested accommodations
 - Progress monitoring strategies
 - Evidence-based practices references
 
-**Cost**: ~$0.02 per goal generation (850 tokens avg)
+This replaces the old Express-based `server/src/services/openai.service.js`, which was removed along with the rest of the `server/` directory. Until the Edge Function is built, `goalsAPI.generateAI()` throws an error.
 
 ### PDF Reports
 
@@ -658,22 +424,27 @@ Real-time metrics:
 - UI with glassmorphism
 
 ### ✅ Phase 2: Enterprise (Completed - v2.0)
-- Backend API with PostgreSQL
-- **Real OpenAI GPT-4 integration**
+- Backend API with PostgreSQL (Node/Express — since retired)
 - RBAC and team collaboration
-- Audit logging
 - PDF export
 - Testing infrastructure
 - Security hardening
 
-### 🔄 Phase 3: Advanced (Q1 2025)
+### ✅ Phase 3: Supabase Migration (Completed)
+- Migrated backend from self-hosted Node/Express + PostgreSQL to Supabase
+- Supabase Auth replaces custom JWT authentication
+- Row Level Security policies replace application-level authorization
+- `server/` directory removed entirely
+
+### 🔄 Phase 4: Advanced (In Progress)
+- **AI goal generation via Supabase Edge Function** (reimplementing the removed OpenAI integration)
 - Real-time collaboration (WebSockets)
 - Email notifications
 - Calendar integration
 - Mobile app (React Native)
 - Bulk import/export
 
-### 📅 Phase 4: Scale (Q2 2025)
+### 📅 Phase 5: Scale (Q2 2025)
 - Multi-tenancy
 - SSO (Google, Microsoft)
 - Advanced AI analytics
@@ -735,7 +506,8 @@ MIT License - See LICENSE file
 
 ## 🌟 Acknowledgments
 
-- OpenAI for GPT-4 API
+- Supabase for hosted Postgres, auth, and storage
+- OpenAI for the GPT-4 API (planned, via Edge Function)
 - shadcn/ui for component patterns
 - Special education professionals for feedback
 

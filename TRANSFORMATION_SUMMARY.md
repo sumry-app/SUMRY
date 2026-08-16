@@ -1,5 +1,7 @@
 # 🚀 SUMRY Transformation Complete - $241 Well Spent!
 
+> **Update**: SUMRY's backend has since been migrated from the Node/Express + PostgreSQL setup described below to Supabase (hosted Postgres + Auth + Storage). The `server/` directory referenced throughout this document no longer exists. In particular, the "Real OpenAI GPT-4 Integration" described here was removed along with the Express server and is **not currently functional** — it needs to be reimplemented as a Supabase Edge Function. This document is kept as a historical record of that phase of the project; see [README.md](./README.md) for the current architecture.
+
 ## **From Good to EXTRAORDINARY**
 
 You asked me to use $241 in credits to make SUMRY stand out from competitors like SpedTrack and GoalBook. Here's what we built:
@@ -10,7 +12,7 @@ You asked me to use $241 in credits to make SUMRY stand out from competitors lik
 
 | Metric | Before | After | Improvement |
 |--------|--------|-------|-------------|
-| **AI Features** | Templates only | Real GPT-4 integration | ∞ |
+| **AI Features** | Templates only | GPT-4 integration (built at the time; not currently functional post-Supabase migration — see note above) | ∞ |
 | **Components** | 1 monolithic file | 50+ modular components | +4900% |
 | **User Experience** | Basic | Voice input + AI copilot | Revolutionary |
 | **Automation** | Manual everything | 5+ automated workflows | Hours saved daily |
@@ -75,16 +77,16 @@ You asked me to use $241 in credits to make SUMRY stand out from competitors lik
 
 ---
 
-#### 4. **Real OpenAI GPT-4 Integration** - Backend
+#### 4. **OpenAI GPT-4 Integration** - Backend
 - Generates research-based IEP goals
 - Creates measurable objectives
 - Suggests accommodations
 - Provides monitoring strategies
 - Cites evidence-based practices
 
-**File**: `server/src/services/openai.service.js` (350 lines)
+**File**: `server/src/services/openai.service.js` (350 lines) — removed along with the rest of `server/` during the Supabase migration; this feature is **not currently functional** and needs to be rebuilt as a Supabase Edge Function.
 
-**Value**: Creates professional goals in 30 seconds vs. 30 minutes
+**Value**: Creates professional goals in 30 seconds vs. 30 minutes (once reimplemented)
 
 ---
 
@@ -205,13 +207,13 @@ You asked me to use $241 in credits to make SUMRY stand out from competitors lik
 | Parent Portal | Limited | Full-featured |
 | Meeting Automation | ❌ | ✅ |
 | Keyboard Shortcuts | ❌ | ✅ |
-| Real AI Integration | ❌ | ✅ GPT-4 |
+| Real AI Integration | ❌ | ⚠️ GPT-4 (planned — currently not functional, pending Edge Function) |
 | Open Source | ❌ | ✅ |
 
 ### **vs. GoalBook**
 | Feature | GoalBook | SUMRY |
 |---------|----------|-------|
-| AI Goal Generation | Templates | Real GPT-4 |
+| AI Goal Generation | Templates | ⚠️ GPT-4 (planned — currently not functional) |
 | Progress Predictions | ❌ | ✅ |
 | Voice Logging | ❌ | ✅ |
 | IEP Meeting Prep | ❌ | ✅ Automated |
@@ -329,7 +331,7 @@ If you value a teacher's time at $50/hour:
 
 You've transformed SUMRY from a good IEP app into **THE** IEP management system that:
 
-✅ Uses real AI (not just templates)
+⚠️ Was built to use real AI, not just templates (AI goal generation currently disabled pending Supabase Edge Function work — see note at top)
 ✅ Saves teachers 10+ hours per week
 ✅ Engages families like never before
 ✅ Predicts outcomes before they happen
