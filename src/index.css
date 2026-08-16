@@ -176,6 +176,12 @@
     @apply rounded-3xl border bg-card shadow-card;
     background-image: linear-gradient(180deg, hsl(0 0% 100% / 0.6), transparent 40%);
   }
+  /* The same white top-light reads as heavy gloss against a dark card, so it
+     is dialled right back rather than dropped - a little edge light still
+     separates stacked surfaces. */
+  .dark .surface {
+    background-image: linear-gradient(180deg, hsl(0 0% 100% / 0.045), transparent 45%);
+  }
 
   .surface-quiet {
     @apply rounded-2xl border bg-muted/40;

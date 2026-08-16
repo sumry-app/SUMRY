@@ -24,6 +24,23 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="SUMRY" />
 
+    <!-- Apply the saved theme before first paint so dark-mode users never see
+         a white flash while the bundle loads. -->
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('sumry_theme');
+          var dark = saved
+            ? saved === 'dark'
+            : window.matchMedia('(prefers-color-scheme: dark)').matches;
+          if (dark) {
+            document.documentElement.classList.add('dark');
+            document.documentElement.style.colorScheme = 'dark';
+          }
+        } catch (e) {}
+      })();
+    </script>
+
     <!-- PWA Manifest -->
     <link rel="manifest" href="/manifest.json" />
 

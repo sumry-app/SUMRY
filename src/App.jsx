@@ -14,7 +14,7 @@ import {
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
   AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search, Sun, Moon
 } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
@@ -33,6 +33,7 @@ import { cn } from "@/lib/utils";
 import { StatCard, ProgressRing } from "@/components/ui/stat-card";
 import { EmptyState, EmptyHint } from "@/components/ui/empty-state";
 import { usePersistentStore } from "@/hooks/usePersistentStore";
+import { useTheme } from "@/hooks/useTheme";
 import { AdvancedSearch } from "@/components/search/AdvancedSearch";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { triggerNotifications } from "@/lib/notificationManager";
@@ -1829,6 +1830,7 @@ export default function App() {
   const { store, setStore, replaceStore } = usePersistentStore();
   const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
   const [activeTab, setActiveTab] = useState("dashboard");
+  const { isDark, toggleTheme } = useTheme();
   const [showSearch, setShowSearch] = useState(false);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
@@ -1952,6 +1954,16 @@ export default function App() {
                 </span>
                 <span className="max-w-[9rem] truncate text-sm font-semibold">{currentUser.name}</span>
               </div>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={toggleTheme}
+                aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+                title={isDark ? "Light theme" : "Dark theme"}
+              >
+                {isDark ? <Sun strokeWidth={2} /> : <Moon strokeWidth={2} />}
+              </Button>
 
               <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Sign out" title="Sign out">
                 <LogOut strokeWidth={2} />
