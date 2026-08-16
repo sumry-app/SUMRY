@@ -5,6 +5,7 @@ import { supabaseAuthAPI } from './supabaseAuth'
 import { supabaseStudentsAPI } from './supabaseStudents'
 import { supabaseGoalsAPI } from './supabaseGoals'
 import { supabaseProgressAPI } from './supabaseProgress'
+import { supabaseEvidenceAPI } from './supabaseEvidence'
 
 // Re-export Supabase APIs with the same interface as before
 export const authAPI = {
@@ -44,6 +45,18 @@ export const progressAPI = {
   update: (logId, logData) => supabaseProgressAPI.update(logId, logData),
   delete: (logId) => supabaseProgressAPI.delete(logId),
   getAnalytics: (studentId) => supabaseProgressAPI.getAnalytics(studentId)
+};
+
+// Evidence / file attachments API (Supabase Storage backed)
+export const evidenceAPI = {
+  maxFileBytes: supabaseEvidenceAPI.maxFileBytes,
+  upload: (params) => supabaseEvidenceAPI.upload(params),
+  getByProgressLog: (progressLogId) => supabaseEvidenceAPI.getByProgressLog(progressLogId),
+  getSignedUrl: (filePath, expiresInSeconds) =>
+    supabaseEvidenceAPI.getSignedUrl(filePath, expiresInSeconds),
+  updateDescription: (evidenceId, description) =>
+    supabaseEvidenceAPI.updateDescription(evidenceId, description),
+  delete: (evidenceId) => supabaseEvidenceAPI.delete(evidenceId)
 };
 
 // Export empty default for backward compatibility

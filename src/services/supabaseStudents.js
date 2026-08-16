@@ -95,7 +95,7 @@ export const supabaseStudentsAPI = {
 
   // Update student
   update: async (studentId, studentData) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('students')
       .update({
         first_name: studentData.firstName,
@@ -106,20 +106,29 @@ export const supabaseStudentsAPI = {
         student_number: studentData.studentNumber
       })
       .eq('id', studentId)
+      .select()
 
     if (error) throw error
+    // RLS blocks affect zero rows without raising an error.
+    if (!data || data.length === 0) {
+      throw new Error('Student not found or you do not have permission to edit them')
+    }
 
     return { message: 'Student updated successfully' }
   },
 
   // Delete student (soft delete)
   delete: async (studentId) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('students')
       .update({ is_active: false })
       .eq('id', studentId)
+      .select()
 
     if (error) throw error
+    if (!data || data.length === 0) {
+      throw new Error('Student not found or you do not have permission to delete them')
+    }
 
     return { message: 'Student deleted successfully' }
   },

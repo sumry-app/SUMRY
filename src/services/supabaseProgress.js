@@ -69,7 +69,7 @@ export const supabaseProgressAPI = {
 
   // Update progress log
   update: async (logId, logData) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('progress_logs')
       .update({
         log_date: logData.logDate,
@@ -77,20 +77,30 @@ export const supabaseProgressAPI = {
         notes: logData.notes
       })
       .eq('id', logId)
+      .select()
 
     if (error) throw error
+    // RLS blocks affect zero rows without raising, so treat an empty result
+    // as a failure rather than reporting a success that never happened.
+    if (!data || data.length === 0) {
+      throw new Error('Progress log not found or you do not have permission to edit it')
+    }
 
     return { message: 'Progress log updated successfully' }
   },
 
   // Delete progress log
   delete: async (logId) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('progress_logs')
       .delete()
       .eq('id', logId)
+      .select()
 
     if (error) throw error
+    if (!data || data.length === 0) {
+      throw new Error('Progress log not found or you do not have permission to delete it')
+    }
 
     return { message: 'Progress log deleted successfully' }
   },

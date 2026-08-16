@@ -111,7 +111,7 @@ export const supabaseGoalsAPI = {
 
   // Update goal
   update: async (goalId, goalData) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('goals')
       .update({
         area: goalData.area,
@@ -126,20 +126,30 @@ export const supabaseGoalsAPI = {
         end_date: goalData.endDate
       })
       .eq('id', goalId)
+      .select()
 
     if (error) throw error
+    // A row blocked by RLS updates nothing but raises no error, so an empty
+    // result means "not found or not permitted" rather than success.
+    if (!data || data.length === 0) {
+      throw new Error('Goal not found or you do not have permission to edit it')
+    }
 
     return { message: 'Goal updated successfully' }
   },
 
   // Delete goal
   delete: async (goalId) => {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('goals')
       .delete()
       .eq('id', goalId)
+      .select()
 
     if (error) throw error
+    if (!data || data.length === 0) {
+      throw new Error('Goal not found or you do not have permission to delete it')
+    }
 
     return { message: 'Goal deleted successfully' }
   },
