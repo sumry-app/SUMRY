@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Download, Upload, Trash2, Save, TrendingUp, Calendar, Edit, Eye,
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
@@ -28,6 +29,9 @@ import {
   getProgressStatus,
   computeStoreStats
 } from "@/lib/data";
+import { cn } from "@/lib/utils";
+import { StatCard, ProgressRing } from "@/components/ui/stat-card";
+import { EmptyState, EmptyHint } from "@/components/ui/empty-state";
 import { usePersistentStore } from "@/hooks/usePersistentStore";
 import { AdvancedSearch } from "@/components/search/AdvancedSearch";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
@@ -1145,123 +1149,234 @@ function Dashboard({ store, stats: statsOverride }) {
     return () => clearInterval(interval);
   }, [store.goals, store.students, store.logs]);
 
+  const roster = useMemo(() => {
+    return store.students.map(student => {
+      const goals = store.goals.filter(g => g.studentId === student.id);
+      const goalRows = goals.map(goal => {
+        const logs = store.logs
+          .filter(l => l.goalId === goal.id)
+          .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+        const latest = logs[logs.length - 1];
+        const base = parseScore(goal.baseline);
+        const targ = parseScore(goal.target);
+        const curr = latest ? parseScore(latest.score) : null;
+
+        // Percentage of the baseline-to-target journey covered so far.
+        let pct = null;
+        if (curr !== null && base !== null && targ !== null && targ !== base) {
+          pct = Math.max(0, Math.min(100, ((curr - base) / (targ - base)) * 100));
+        }
+
+        const daysSince = latest
+          ? Math.floor((Date.now() - Date.parse(latest.dateISO)) / 86400000)
+          : null;
+
+        return {
+          goal,
+          logs,
+          latest,
+          pct,
+          daysSince,
+          status: getProgressStatus(logs, goal.baseline, goal.target),
+        };
+      });
+
+      return { student, goalRows };
+    });
+  }, [store.students, store.goals, store.logs]);
+
+  // Goals that have gone quiet, or never started. This is the list a teacher
+  // actually needs on a Monday morning.
+  const needsAttention = useMemo(() => {
+    const out = [];
+    roster.forEach(({ student, goalRows }) => {
+      goalRows.forEach(row => {
+        if (row.daysSince === null) {
+          out.push({ student, ...row, reason: "No data logged yet" });
+        } else if (row.daysSince >= 14) {
+          out.push({ student, ...row, reason: `${row.daysSince} days since last entry` });
+        } else if (row.status.status === "off-track") {
+          out.push({ student, ...row, reason: "Trending below target" });
+        }
+      });
+    });
+    return out.slice(0, 5);
+  }, [roster]);
+
+  const recentLogs = useMemo(() => {
+    return [...store.logs]
+      .sort((a, b) => b.dateISO.localeCompare(a.dateISO))
+      .slice(0, 6)
+      .map(log => {
+        const goal = store.goals.find(g => g.id === log.goalId);
+        const student = store.students.find(s => s.id === goal?.studentId);
+        return { log, goal, student };
+      });
+  }, [store.logs, store.goals, store.students]);
+
+  if (store.students.length === 0) {
+    return (
+      <EmptyState
+        icon={Users}
+        title="Your roster is empty"
+        description="Add a student to begin. Once they're here you can set IEP goals, log progress sessions, and SUMRY will chart the trends for you."
+        action="Add your first student"
+        onAction={() => document.querySelector('[role="tab"][aria-controls$="students"]')?.click()}
+      >
+        <div className="grid gap-3 text-left sm:grid-cols-3">
+          {[
+            { n: "1", t: "Add a student", d: "Name, grade, and classification." },
+            { n: "2", t: "Set a goal", d: "Start from a template or write your own." },
+            { n: "3", t: "Log progress", d: "A score and a note is all it takes." },
+          ].map(step => (
+            <div key={step.n} className="rounded-2xl border bg-card p-4">
+              <span className="grid size-6 place-items-center rounded-full bg-primary text-2xs font-bold text-primary-foreground">
+                {step.n}
+              </span>
+              <p className="mt-2.5 text-sm font-semibold">{step.t}</p>
+              <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{step.d}</p>
+            </div>
+          ))}
+        </div>
+      </EmptyState>
+    );
+  }
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-slate-900 mb-2">Dashboard</h2>
-        <p className="text-slate-600">Welcome to SUMRY - Your IEP Management System</p>
-      </div>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]">
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="bg-gradient-to-br from-blue-500 via-indigo-500 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-600/30 rounded-2xl">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-50 text-sm font-medium">Students</p>
-                <p className="text-3xl font-bold mt-1">{stats.totalStudents}</p>
+      {/* ---- roster ---- */}
+      <div className="space-y-4">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="headline text-xl">Your students</h3>
+          <span className="text-sm text-muted-foreground">
+            {store.students.length} {store.students.length === 1 ? "student" : "students"}
+          </span>
+        </div>
+
+        {roster.map(({ student, goalRows }, i) => (
+          <div
+            key={student.id}
+            className={cn("surface animate-fade-up p-5", i === 1 && "animation-delay-75", i > 1 && "animation-delay-150")}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <span className="grid size-11 place-items-center rounded-2xl bg-primary-soft font-display text-base font-semibold text-primary-strong">
+                  {student.name.charAt(0).toUpperCase()}
+                </span>
+                <div>
+                  <p className="font-semibold leading-tight">{student.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {[student.grade, student.disability].filter(Boolean).join(" · ") || "No details yet"}
+                  </p>
+                </div>
               </div>
-              <Users className="h-8 w-8 text-blue-50" strokeWidth={2} />
+              <Badge variant={goalRows.length ? "default" : "outline"}>
+                {goalRows.length} {goalRows.length === 1 ? "goal" : "goals"}
+              </Badge>
             </div>
-          </CardContent>
-        </Card>
 
-        <Card className="bg-gradient-to-br from-indigo-600 to-slate-700 text-white border-0 shadow-lg shadow-slate-900/30 rounded-2xl">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-indigo-50 text-sm font-medium">Goals</p>
-                <p className="text-3xl font-bold mt-1">{stats.totalGoals}</p>
-              </div>
-              <TrendingUp className="h-8 w-8 text-indigo-50" strokeWidth={2} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-sky-500 to-blue-600 text-white border-0 shadow-lg shadow-blue-600/25 rounded-2xl">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-50 text-sm font-medium">Progress Logs</p>
-                <p className="text-3xl font-bold mt-1">{stats.totalLogs}</p>
-              </div>
-              <BarChart3 className="h-8 w-8 text-blue-50" strokeWidth={2} />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="bg-gradient-to-br from-slate-700 to-indigo-600 text-white border-0 shadow-lg shadow-indigo-900/30 rounded-2xl">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-blue-50 text-sm font-medium">On Track</p>
-                <p className="text-3xl font-bold mt-1">{stats.onTrackGoals}/{stats.totalGoals}</p>
-              </div>
-              <CheckCircle className="h-8 w-8 text-blue-50" strokeWidth={2} />
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {store.students.length === 0 && (
-        <Card className="bg-gradient-to-br from-sky-50 to-indigo-50 border-indigo-200/60 rounded-2xl shadow-lg shadow-indigo-200/40">
-          <CardContent className="p-8">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center flex-shrink-0 shadow-lg shadow-indigo-500/30">
-                <Sparkles className="h-6 w-6 text-white" strokeWidth={2} />
-              </div>
-              <div>
-                <h3 className="text-lg font-semibold text-indigo-900 mb-2">Get Started with SUMRY</h3>
-                <p className="text-indigo-800 mb-4">
-                  Welcome! Start by adding your first student, then create IEP goals and track progress.
-                </p>
-                <ul className="space-y-2 text-sm text-indigo-700">
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                    Add students in the Students tab
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                    Create goals using AI assistance or templates
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                    Log progress and analyze trends
-                  </li>
-                </ul>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {store.goals.length > 0 && (
-        <Card className="bg-white/80 backdrop-blur-xl border-black/5">
-          <CardContent className="p-6">
-            <h3 className="text-lg font-semibold text-slate-900 mb-4">Recent Activity</h3>
-            <div className="space-y-3">
-              {store.logs.slice(0, 5).map(log => {
-                const goal = store.goals.find(g => g.id === log.goalId);
-                const student = store.students.find(s => s.id === goal?.studentId);
-
-                return (
-                  <div key={log.id} className="flex items-center justify-between p-3 bg-slate-50 rounded-lg">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-                        <TrendingUp className="h-5 w-5 text-blue-600" strokeWidth={2}/>
+            {goalRows.length === 0 ? (
+              <EmptyHint icon={Plus} className="mt-4">
+                No goals yet for {student.name.split(" ")[0]}.
+              </EmptyHint>
+            ) : (
+              <div className="mt-5 space-y-4">
+                {goalRows.map(({ goal, pct, latest, status }) => (
+                  <div key={goal.id}>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <Badge variant="secondary" className="shrink-0">{goal.area}</Badge>
+                        <span className="truncate text-sm text-muted-foreground">{goal.description}</span>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">{student?.name}</p>
-                        <p className="text-xs text-slate-600">{goal?.area} - {log.score}</p>
-                      </div>
+                      <span className="shrink-0 text-sm font-semibold tabular">
+                        {latest ? `${latest.score}` : "—"}
+                        <span className="ml-1 text-xs font-normal text-muted-foreground">
+                          / {goal.target} {goal.metric}
+                        </span>
+                      </span>
                     </div>
-                    <span className="text-xs text-slate-500">{log.dateISO}</span>
+                    <div className="mt-2 flex items-center gap-3">
+                      <Progress
+                        value={pct ?? 0}
+                        tone={
+                          status.status === "on-track" ? "success"
+                          : status.status === "off-track" ? "warning"
+                          : "primary"
+                        }
+                        label={`${goal.area} progress`}
+                        className="flex-1"
+                      />
+                      <span className="w-10 shrink-0 text-right text-xs font-semibold tabular text-muted-foreground">
+                        {pct === null ? "—" : `${Math.round(pct)}%`}
+                      </span>
+                    </div>
                   </div>
-                );
-              })}
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {/* ---- side rail ---- */}
+      <div className="space-y-5">
+        <div className="surface animate-fade-up p-5">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="size-4 text-warning" strokeWidth={2.2} />
+            <h3 className="headline text-base">Needs a look</h3>
+          </div>
+
+          {needsAttention.length === 0 ? (
+            <div className="mt-4 flex items-center gap-2.5 rounded-xl bg-success-soft px-3.5 py-3">
+              <CheckCircle className="size-4 shrink-0 text-success" strokeWidth={2.2} />
+              <p className="text-sm font-medium text-success">Everything is up to date.</p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <ul className="mt-4 space-y-2.5">
+              {needsAttention.map((item, idx) => (
+                <li key={`${item.goal.id}-${idx}`} className="rounded-xl border bg-muted/30 p-3">
+                  <p className="text-sm font-semibold leading-tight">{item.student.name}</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">{item.goal.area} · {item.reason}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="surface animate-fade-up animation-delay-150 p-5">
+          <div className="flex items-center gap-2">
+            <Clock className="size-4 text-muted-foreground" strokeWidth={2.2} />
+            <h3 className="headline text-base">Recent activity</h3>
+          </div>
+
+          {recentLogs.length === 0 ? (
+            <EmptyHint icon={FileText} className="mt-4">
+              Progress entries will appear here.
+            </EmptyHint>
+          ) : (
+            <ul className="mt-4 space-y-1">
+              {recentLogs.map(({ log, goal, student }) => (
+                <li
+                  key={log.id}
+                  className="flex items-center justify-between gap-3 rounded-xl px-2.5 py-2 transition-colors hover:bg-muted/50"
+                >
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-accent-soft text-2xs font-bold tracking-normal text-accent">
+                      {(student?.name ?? "?").charAt(0).toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium leading-tight">{student?.name ?? "Unknown"}</p>
+                      <p className="text-xs text-muted-foreground">{goal?.area} · scored {log.score}</p>
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-xs tabular text-muted-foreground">{log.dateISO.slice(5)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -1353,88 +1468,161 @@ function LoginPage({ onLogin }) {
     }
   };
 
+  const pillars = [
+    { icon: Sparkles, title: "Goals that write themselves", body: "Start from research-based templates instead of a blank page." },
+    { icon: TrendingUp, title: "Progress you can see", body: "Every data point plotted against the target, with trendlines that show what's working." },
+    { icon: Printer, title: "Reports ready for the meeting", body: "Turn a term of data into a clear summary in a couple of clicks." },
+  ];
+
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(80,115,255,0.16),transparent_55%)]">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 -right-20 h-96 w-96 rounded-full bg-gradient-to-br from-blue-400/35 to-indigo-500/20 blur-3xl" />
-        <div className="absolute top-1/2 -left-28 h-[22rem] w-[22rem] rounded-full bg-gradient-to-br from-sky-200/50 to-blue-200/20 blur-3xl" />
-      </div>
-      <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
-        <Card className="w-full max-w-md rounded-3xl border border-white/60 bg-white/80 backdrop-blur-2xl shadow-2xl shadow-slate-200/70">
-          <CardContent className="p-8">
-            <div className="mb-8 flex items-center justify-center">
-              <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 shadow-lg shadow-indigo-600/40">
-                <Award className="h-10 w-10 text-white" strokeWidth={2} />
-              </div>
-            </div>
+    <div className="app-canvas relative min-h-screen">
+      <div className="relative z-10 mx-auto grid min-h-screen max-w-6xl items-center gap-12 px-5 py-10 lg:grid-cols-[1.05fr_minmax(0,26rem)] lg:gap-16 lg:py-16">
 
-            <div className="text-center">
-              <span className="inline-flex items-center justify-center rounded-full bg-blue-50 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.4em] text-blue-700">SUMRY</span>
-              <h1 className="mt-4 text-3xl font-semibold text-slate-900">Welcome back</h1>
-              <p className="mt-2 text-sm text-slate-600">Sign in to orchestrate purposeful IEP growth.</p>
+        {/* ---- story panel: says what this is for before asking for a password ---- */}
+        <div className="hidden animate-fade-up flex-col lg:flex">
+          <div className="flex items-center gap-3">
+            <span className="grid size-11 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-glow">
+              <Award className="size-6" strokeWidth={2} />
+            </span>
+            <div>
+              <p className="font-display text-xl font-semibold leading-none tracking-tight">SUMRY</p>
+              <p className="mt-1 text-2xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                For special education teams
+              </p>
             </div>
+          </div>
 
-            <form onSubmit={handleSubmit} className="mt-8 space-y-4">
-              {isSignup && (
+          <h1 className="headline mt-10 text-5xl leading-[1.05] xl:text-6xl">
+            Spend less time on
+            <br />
+            paperwork.{" "}
+            <span className="text-gradient">More time
+            <br />
+            with your students.</span>
+          </h1>
+
+          <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted-foreground">
+            SUMRY keeps IEP goals, progress data, and the evidence behind them in one
+            calm place — so the story of a student&rsquo;s growth is always ready to tell.
+          </p>
+
+          <ul className="mt-10 space-y-5">
+            {pillars.map(({ icon: Icon, title, body }, i) => (
+              <li
+                key={title}
+                className={cn(
+                  "flex animate-fade-up gap-4",
+                  i === 1 && "animation-delay-150",
+                  i === 2 && "animation-delay-300"
+                )}
+              >
+                <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent">
+                  <Icon className="size-4" strokeWidth={2.2} />
+                </span>
                 <div>
-                  <Label className="text-sm font-medium text-slate-700">Name</Label>
+                  <p className="font-semibold leading-snug text-foreground">{title}</p>
+                  <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground">{body}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* ---- auth panel ---- */}
+        <div className="w-full animate-scale-in">
+          {/* compact identity, shown only where the story panel is hidden */}
+          <div className="mb-7 flex items-center justify-center gap-3 lg:hidden">
+            <span className="grid size-11 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-glow">
+              <Award className="size-6" strokeWidth={2} />
+            </span>
+            <p className="font-display text-2xl font-semibold tracking-tight">SUMRY</p>
+          </div>
+
+          <div className="surface-raised p-7 sm:p-8">
+            <h2 className="headline text-2xl">
+              {isSignup ? "Create your workspace" : "Welcome back"}
+            </h2>
+            <p className="mt-1.5 text-sm text-muted-foreground">
+              {isSignup
+                ? "A few details and you're ready to add your first student."
+                : "Sign in to pick up where you left off."}
+            </p>
+
+            <form onSubmit={handleSubmit} className="mt-7 space-y-4" noValidate>
+              {isSignup && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="auth-name">Your name</Label>
                   <Input
+                    id="auth-name"
                     type="text"
-                    placeholder="Your name"
+                    autoComplete="name"
+                    placeholder="Jordan Reyes"
                     value={name}
                     onChange={e => setName(e.target.value)}
-                    className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
                   />
                 </div>
               )}
 
-              <div>
-                <Label className="text-sm font-medium text-slate-700">Email</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-email">Email</Label>
                 <Input
+                  id="auth-email"
                   type="email"
-                  placeholder="your@email.com"
+                  autoComplete="email"
+                  placeholder="you@school.edu"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
-                  className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
                 />
               </div>
 
-              <div>
-                <Label className="text-sm font-medium text-slate-700">Password</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="auth-password">Password</Label>
                 <Input
+                  id="auth-password"
                   type="password"
+                  autoComplete={isSignup ? "new-password" : "current-password"}
                   placeholder="••••••••"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
-                  className="mt-1 rounded-xl border border-slate-200 bg-white/80 backdrop-blur-xl"
                 />
               </div>
 
               {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50/80 p-3">
-                  <p className="text-sm font-medium text-red-600">{error}</p>
+                <div
+                  role="alert"
+                  className="flex items-start gap-2.5 rounded-xl border border-destructive/25 bg-destructive-soft p-3"
+                >
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" strokeWidth={2.2} />
+                  <p className="text-sm font-medium text-destructive">{error}</p>
                 </div>
               )}
 
-              <Button type="submit" className="w-full rounded-xl shadow-lg shadow-blue-500/20">
-                {isSignup ? "Create Account" : "Sign In"}
+              <Button type="submit" size="lg" className="w-full">
+                {isSignup ? "Create account" : "Sign in"}
+                <ChevronRight className="size-4" strokeWidth={2.4} />
               </Button>
-
-              <div className="text-center">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsSignup(!isSignup);
-                    setError("");
-                  }}
-                  className="text-sm font-medium text-slate-600 transition-colors hover:text-slate-900"
-                >
-                  {isSignup ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
-                </button>
-              </div>
             </form>
-          </CardContent>
-        </Card>
+
+            <div className="mt-6 border-t pt-5 text-center">
+              <button
+                type="button"
+                onClick={() => { setIsSignup(!isSignup); setError(""); }}
+                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {isSignup ? (
+                  <>Already have an account? <span className="font-semibold text-primary">Sign in</span></>
+                ) : (
+                  <>New to SUMRY? <span className="font-semibold text-primary">Create an account</span></>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <p className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
+            <Shield className="size-3.5" strokeWidth={2} />
+            Student data stays on this device until you connect a workspace.
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -1448,8 +1636,24 @@ export default function App() {
   const [showSearch, setShowSearch] = useState(false);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
-  const dataHealth = stats.totalLogs > 0 ? "Active tracking" : "Awaiting logs";
   const lastUpdatedLabel = store.lastUpdated ? formatTimestamp(store.lastUpdated) : "Awaiting first sync";
+
+  // Logging activity over the last 8 weeks, oldest first - drives the sparkline
+  // on the "data points" tile so the number has some shape behind it.
+  const sparkPoints = useMemo(() => {
+    const weeks = 8;
+    const now = Date.now();
+    const buckets = new Array(weeks).fill(0);
+
+    store.logs.forEach(log => {
+      const t = Date.parse(log.dateISO);
+      if (Number.isNaN(t)) return;
+      const weeksAgo = Math.floor((now - t) / (7 * 86400000));
+      if (weeksAgo >= 0 && weeksAgo < weeks) buckets[weeks - 1 - weeksAgo] += 1;
+    });
+
+    return buckets.some(Boolean) ? buckets : [];
+  }, [store.logs]);
 
   const handleImport = (e) => {
     const file = e.target.files?.[0];
@@ -1506,176 +1710,130 @@ export default function App() {
     return <LoginPage onLogin={setCurrentUserState} />;
   }
 
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_rgba(80,115,255,0.16),transparent_55%)]">
-      <div className="pointer-events-none absolute inset-0">
-        <div className="absolute -top-32 -right-32 h-96 w-96 rounded-full bg-gradient-to-br from-blue-400/40 to-indigo-500/25 blur-3xl" />
-        <div className="absolute top-1/2 -left-40 h-[28rem] w-[28rem] rounded-full bg-gradient-to-br from-sky-200/40 to-blue-200/20 blur-3xl" />
-      </div>
+  const firstName = (currentUser.name || "").trim().split(/\s+/)[0] || "there";
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+  const hasData = stats.totalStudents > 0;
 
+  return (
+    <div className="app-canvas relative min-h-screen">
       <div className="relative z-10 flex min-h-screen flex-col">
         <OfflineIndicator />
 
-        <header className="sticky top-0 z-40 border-b border-white/60 bg-white/80 backdrop-blur-xl">
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+        <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-xl">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 shadow-lg shadow-blue-600/30">
-                <Award className="h-6 w-6 text-white" strokeWidth={2} />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-slate-900">SUMRY</h1>
-                <p className="text-[11px] font-medium uppercase tracking-[0.28em] text-slate-500">Professional IEP Workspace</p>
+              <span className="grid size-10 shrink-0 place-items-center rounded-2xl bg-primary text-primary-foreground shadow-glow">
+                <Award className="size-5" strokeWidth={2} />
+              </span>
+              <div className="min-w-0">
+                <h1 className="font-display text-lg font-semibold leading-none tracking-tight">SUMRY</h1>
+                <p className="mt-1 hidden text-2xs font-semibold uppercase tracking-[0.16em] text-muted-foreground sm:block">
+                  IEP Workspace
+                </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => setShowSearch(true)}
-                className="rounded-xl border-slate-200 bg-white/80 hover:bg-white"
+                className="text-muted-foreground"
               >
-                <Search className="mr-2 h-4 w-4" strokeWidth={2} />
+                <Search strokeWidth={2} />
                 <span className="hidden sm:inline">Search</span>
-                <kbd className="ml-2 hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 text-xs font-mono font-semibold text-slate-500 bg-slate-100 rounded border border-slate-300">
+                <kbd className="ml-1 hidden rounded border bg-muted px-1.5 py-0.5 font-mono text-2xs font-semibold tracking-normal text-muted-foreground sm:inline-block">
                   ⌘K
                 </kbd>
               </Button>
+
               <NotificationCenter />
-              <div className="hidden items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm sm:flex">
-                <Sparkles className="h-3.5 w-3.5 text-blue-600" strokeWidth={2} />
-                Guided insights
+
+              <div className="hidden items-center gap-2 rounded-full border bg-card py-1 pl-1 pr-3 shadow-soft sm:flex">
+                <span className="grid size-7 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary-strong">
+                  {firstName.charAt(0).toUpperCase()}
+                </span>
+                <span className="max-w-[9rem] truncate text-sm font-semibold">{currentUser.name}</span>
               </div>
-              <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-slate-700 shadow-sm">
-                <User className="h-4 w-4 text-slate-500" strokeWidth={2} />
-                {currentUser.name}
-              </div>
-              <Button variant="outline" size="sm" onClick={handleLogout} className="rounded-xl border-slate-200">
-                <LogOut className="mr-2 h-4 w-4" strokeWidth={2} />
-                Sign out
+
+              <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Sign out" title="Sign out">
+                <LogOut strokeWidth={2} />
               </Button>
             </div>
           </div>
         </header>
 
-        <main className="flex-1 pb-16">
-          <section className="pt-12">
-            <div className="mx-auto grid max-w-7xl gap-6 px-4 sm:px-6 lg:px-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)]">
-              <div className="relative overflow-hidden rounded-3xl border border-white/60 bg-white/80 p-8 shadow-xl shadow-slate-200/70 backdrop-blur-xl">
-                <div className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-gradient-to-br from-blue-400/35 to-indigo-500/25 blur-3xl" />
-                <span className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.45em] text-blue-700">
-                  IEP Strategy
-                </span>
-                <h2 className="mt-6 text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl">
-                  Design-led clarity for every student plan
-                </h2>
-                <p className="mt-4 max-w-2xl text-base text-slate-600">
-                  Coordinate milestones, monitor evidence, and bring families along with a polished workspace built for student success teams.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Button
-                    size="lg"
-                    className="rounded-xl shadow-lg shadow-blue-500/30"
-                    onClick={() => setActiveTab("students")}
-                  >
-                    <Users className="mr-2 h-4 w-4" strokeWidth={2} />
-                    Manage students
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="rounded-xl border-slate-200 bg-white hover:bg-slate-100"
-                    onClick={() => setActiveTab("progress")}
-                  >
-                    <TrendingUp className="mr-2 h-4 w-4" strokeWidth={2} />
-                    Track progress
-                  </Button>
+        <main className="flex-1 pb-20">
+          <section className="pt-10">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+              {/* greeting + primary actions */}
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+                <div className="animate-fade-up">
+                  <p className="eyebrow">{greeting}</p>
+                  <h2 className="headline mt-2 text-3xl sm:text-4xl">
+                    {hasData ? (
+                      <>Here&rsquo;s where your students stand, {firstName}.</>
+                    ) : (
+                      <>Let&rsquo;s get your first student set up, {firstName}.</>
+                    )}
+                  </h2>
+                  <p className="mt-2 max-w-xl text-[0.95rem] leading-relaxed text-muted-foreground">
+                    {hasData
+                      ? "Everything below reflects the data you've logged so far."
+                      : "Add a student, set a goal, and SUMRY will start building the picture for you."}
+                  </p>
                 </div>
-                <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-slate-200/80 bg-white/90 p-4 shadow-sm shadow-slate-200/70">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Students</span>
-                      <Users className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                    </div>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalStudents}</p>
-                    <p className="text-xs text-slate-500">Active profiles</p>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200/80 bg-gradient-to-br from-blue-500/10 via-white to-white p-4 shadow-sm shadow-slate-200/70">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Goals</span>
-                      <BarChart3 className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                    </div>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalGoals}</p>
-                    <p className="text-xs text-slate-500">Defined objectives</p>
-                  </div>
-                  <div className="rounded-2xl border border-blue-100/70 bg-blue-50/80 p-4 shadow-sm shadow-blue-200/60">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-700">Engagement</span>
-                      <FileText className="h-4 w-4 text-blue-600" strokeWidth={2} />
-                    </div>
-                    <p className="mt-2 text-2xl font-semibold text-slate-900">{stats.totalLogs}</p>
-                    <p className="text-xs text-blue-700/80">Progress updates logged</p>
-                  </div>
-                  <div className="rounded-2xl border-0 bg-gradient-to-br from-blue-600 to-indigo-600 p-4 text-white shadow-lg shadow-indigo-800/40">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold uppercase tracking-wide text-blue-100">On Track</span>
-                      <CheckCircle className="h-4 w-4 text-blue-100" strokeWidth={2} />
-                    </div>
-                    <p className="mt-2 text-2xl font-semibold">{onTrackRate}%</p>
-                    <p className="text-xs text-blue-100/80">{stats.onTrackGoals} goals tracking</p>
-                  </div>
+
+                <div className="flex shrink-0 flex-wrap items-center gap-2.5 animate-fade-up animation-delay-150">
+                  <Button size="lg" onClick={() => setActiveTab("students")}>
+                    <Plus strokeWidth={2.4} />
+                    Add student
+                  </Button>
+                  <Button size="lg" variant="outline" onClick={() => setActiveTab("progress")}>
+                    <TrendingUp strokeWidth={2.2} />
+                    Log progress
+                  </Button>
                 </div>
               </div>
 
-              {store.lastUpdated && (
-                <div className="hidden lg:flex flex-col text-right text-xs px-3 py-1.5 bg-white/60 backdrop-blur-xl rounded-xl border border-white/40 text-slate-500">
-                  <span className="uppercase tracking-wide text-[10px] text-slate-400">Last updated</span>
-                  <span className="text-slate-600 font-medium">{formatTimestamp(store.lastUpdated)}</span>
-                </div>
-              )}
-
-              <div className="rounded-3xl border border-slate-900/20 bg-slate-900 p-8 text-slate-100 shadow-2xl shadow-slate-900/40">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-400">Workspace Owner</p>
-                    <p className="mt-2 text-lg font-semibold text-white">{currentUser.name}</p>
-                  </div>
-                  <span className="rounded-full bg-blue-500/20 px-3 py-1 text-xs font-medium text-blue-100">Secure</span>
-                </div>
-                <div className="mt-6 space-y-4 text-sm">
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span>Last sync</span>
-                    <span className="font-medium text-white">{lastUpdatedLabel}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span>Data health</span>
-                    <span className="font-medium text-white">{dataHealth}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-300">
-                    <span>Active modules</span>
-                    <span className="font-medium text-white">Dashboard · Students · Goals · Progress</span>
-                  </div>
-                </div>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-                    onClick={() => exportJSON(store)}
-                  >
-                    <Download className="mr-2 h-4 w-4" strokeWidth={2} />
-                    Export data
-                  </Button>
-                  <Button
-                    size="sm"
-                    className="rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white shadow-lg shadow-blue-600/30 hover:from-blue-500 hover:to-indigo-400"
-                    onClick={() => document.getElementById('import-input')?.click()}
-                  >
-                    <Upload className="mr-2 h-4 w-4" strokeWidth={2} />
-                    Import data
-                  </Button>
-                  <input id="import-input" type="file" accept=".json" className="hidden" onChange={handleImport} />
-                </div>
+              {/* at-a-glance metrics */}
+              <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <StatCard
+                  className="animate-fade-up"
+                  label="Students"
+                  value={stats.totalStudents}
+                  hint={stats.totalStudents === 1 ? "Active profile" : "Active profiles"}
+                  icon={Users}
+                  tone="primary"
+                />
+                <StatCard
+                  className="animate-fade-up animation-delay-75"
+                  label="Goals"
+                  value={stats.totalGoals}
+                  hint="Objectives being tracked"
+                  icon={BarChart3}
+                  tone="info"
+                />
+                <StatCard
+                  className="animate-fade-up animation-delay-150"
+                  label="Data points"
+                  value={stats.totalLogs}
+                  hint="Progress entries logged"
+                  icon={FileText}
+                  tone="accent"
+                  spark={sparkPoints}
+                />
+                <StatCard
+                  className="animate-fade-up animation-delay-225"
+                  label="On track"
+                  value={onTrackRate}
+                  suffix="%"
+                  hint={`${stats.onTrackGoals} of ${stats.totalGoals || 0} goals meeting target`}
+                  icon={CheckCircle}
+                  tone="success"
+                />
               </div>
             </div>
           </section>
@@ -1683,33 +1841,29 @@ export default function App() {
           <section className="pt-12">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
               <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-                <TabsList className="rounded-2xl border border-white/60 bg-white/80 p-1.5 text-slate-500 shadow-xl shadow-slate-200/60 backdrop-blur-xl">
+                <TabsList className="w-full justify-start overflow-x-auto sm:w-auto">
                   <TabsTrigger
                     value="dashboard"
-                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
                   >
-                    <BarChart3 className="mr-2 h-4 w-4" strokeWidth={2} />
+                    <BarChart3 strokeWidth={2.2} />
                     Dashboard
                   </TabsTrigger>
                   <TabsTrigger
                     value="students"
-                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
                   >
-                    <Users className="mr-2 h-4 w-4" strokeWidth={2} />
+                    <Users strokeWidth={2.2} />
                     Students
                   </TabsTrigger>
                   <TabsTrigger
                     value="goals"
-                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
                   >
-                    <TrendingUp className="mr-2 h-4 w-4" strokeWidth={2} />
+                    <TrendingUp strokeWidth={2.2} />
                     Goals
                   </TabsTrigger>
                   <TabsTrigger
                     value="progress"
-                    className="rounded-xl px-4 py-2 text-sm font-semibold transition-all data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:text-slate-500 data-[state=inactive]:hover:bg-white data-[state=inactive]:hover:text-slate-900"
                   >
-                    <Calendar className="mr-2 h-4 w-4" strokeWidth={2} />
+                    <Calendar strokeWidth={2.2} />
                     Progress
                   </TabsTrigger>
                 </TabsList>
@@ -1730,6 +1884,47 @@ export default function App() {
                   <ProgressView store={store} setStore={setStore} />
                 </TabsContent>
               </Tabs>
+            </div>
+          </section>
+
+          {/* Data ownership matters to schools - keep export within easy reach
+              rather than buried in a settings screen. */}
+          <section className="pt-14">
+            <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+              <div className="flex flex-col gap-4 rounded-2xl border bg-card/60 p-5 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-muted text-muted-foreground">
+                    <Shield className="size-4" strokeWidth={2} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-semibold">Your data, your copy</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                      Last updated {lastUpdatedLabel}. Download a full backup any time.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2.5">
+                  <Button size="sm" variant="outline" onClick={() => exportJSON(store)}>
+                    <Download strokeWidth={2.2} />
+                    Export
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => document.getElementById('import-input')?.click()}
+                  >
+                    <Upload strokeWidth={2.2} />
+                    Import
+                  </Button>
+                  <input
+                    id="import-input"
+                    type="file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={handleImport}
+                  />
+                </div>
+              </div>
             </div>
           </section>
         </main>

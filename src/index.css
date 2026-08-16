@@ -2,106 +2,290 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   SUMRY design tokens
+
+   Direction: "warm modern". Special educators spend hours in this tool, often
+   at the end of a long day. The neutral ramp is deliberately warm (stone/sand
+   rather than blue-grey) because that single choice is what stops the
+   interface reading as clinical. Colour is used sparingly and meaningfully:
+   violet carries identity and actions, coral marks momentum and celebration,
+   green means a student is on track.
+   ========================================================================== */
+
 @layer base {
   :root {
-    /* Professional cobalt-inspired palette */
-    --background: 223 48% 97%;
-    --foreground: 225 42% 15%;
+    /* --- warm neutral ramp ------------------------------------------------ */
+    --background: 36 44% 98%;
+    --foreground: 24 16% 14%;
 
-    /* Surface colors */
     --card: 0 0% 100%;
-    --card-foreground: 225 42% 15%;
+    --card-foreground: 24 16% 14%;
 
-    /* Popover colors */
     --popover: 0 0% 100%;
-    --popover-foreground: 225 42% 15%;
+    --popover-foreground: 24 16% 14%;
 
-    /* Primary - cobalt blue */
-    --primary: 223 85% 54%;
+    --muted: 33 30% 95%;
+    --muted-foreground: 26 9% 44%;
+
+    --secondary: 33 28% 94%;
+    --secondary-foreground: 24 16% 20%;
+
+    --border: 30 22% 90%;
+    --input: 30 22% 88%;
+
+    /* --- identity: violet, modern without being corporate-cold ----------- */
+    --primary: 262 62% 56%;
     --primary-foreground: 0 0% 100%;
+    --primary-soft: 262 70% 96%;
+    --primary-strong: 262 66% 44%;
 
-    /* Secondary - soft slate */
-    --secondary: 220 29% 68%;
-    --secondary-foreground: 225 42% 15%;
+    /* --- energy: warm coral for momentum + celebration ------------------- */
+    --accent: 18 88% 60%;
+    --accent-foreground: 0 0% 100%;
+    --accent-soft: 22 92% 95%;
 
-    /* Muted colors */
-    --muted: 220 32% 92%;
-    --muted-foreground: 223 24% 40%;
+    /* --- semantic -------------------------------------------------------- */
+    --success: 152 46% 38%;
+    --success-foreground: 0 0% 100%;
+    --success-soft: 152 46% 94%;
 
-    /* Accent - polar highlight */
-    --accent: 204 92% 85%;
-    --accent-foreground: 225 42% 15%;
+    --warning: 36 92% 48%;
+    --warning-foreground: 24 40% 12%;
+    --warning-soft: 40 94% 94%;
 
-    /* Destructive - modern warning red */
-    --destructive: 352 78% 55%;
+    --destructive: 358 64% 53%;
     --destructive-foreground: 0 0% 100%;
+    --destructive-soft: 358 80% 96%;
 
-    /* Borders and inputs */
-    --border: 220 26% 88%;
-    --input: 220 26% 88%;
+    --info: 196 62% 42%;
+    --info-foreground: 0 0% 100%;
+    --info-soft: 196 70% 94%;
 
-    /* Focus ring */
-    --ring: 223 85% 54%;
+    --ring: 262 62% 56%;
 
-    /* Softer, more rounded corners */
-    --radius: 1rem;
+    /* Shadows are tinted toward the warm ink rather than neutral black. */
+    --shadow-color: 24 30% 28%;
+
+    --radius: 0.875rem;
+  }
+
+  /* Dark mode keeps the same warmth, shifted to a deep cocoa-plum rather than
+     the usual blue-black, so the two themes feel like one family. */
+  .dark {
+    --background: 265 18% 9%;
+    --foreground: 33 30% 94%;
+
+    --card: 265 16% 13%;
+    --card-foreground: 33 30% 94%;
+
+    --popover: 265 16% 13%;
+    --popover-foreground: 33 30% 94%;
+
+    --muted: 265 12% 19%;
+    --muted-foreground: 30 12% 66%;
+
+    --secondary: 265 12% 20%;
+    --secondary-foreground: 33 30% 94%;
+
+    --border: 265 12% 22%;
+    --input: 265 12% 24%;
+
+    --primary: 262 72% 68%;
+    --primary-foreground: 265 30% 10%;
+    --primary-soft: 262 30% 20%;
+    --primary-strong: 262 72% 76%;
+
+    --accent: 18 88% 64%;
+    --accent-foreground: 265 30% 10%;
+    --accent-soft: 18 40% 22%;
+
+    --success: 152 46% 52%;
+    --success-soft: 152 30% 18%;
+    --warning: 36 92% 60%;
+    --warning-soft: 36 40% 20%;
+    --destructive: 358 70% 64%;
+    --destructive-soft: 358 34% 22%;
+    --info: 196 62% 58%;
+    --info-soft: 196 34% 20%;
+
+    --ring: 262 72% 68%;
+    --shadow-color: 265 40% 3%;
   }
 
   * {
     border-color: hsl(var(--border));
   }
 
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
-    background:
-      radial-gradient(circle at 18% 18%, rgba(82, 132, 252, 0.14), transparent 52%),
-      radial-gradient(circle at 82% 0%, rgba(54, 97, 245, 0.08), transparent 55%),
-      hsl(var(--background));
+    background-color: hsl(var(--background));
     color: hsl(var(--foreground));
-    font-family: "Inter", -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+    font-family: theme('fontFamily.sans');
+    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    min-height: 100vh;
   }
 
-  /* Enhanced glassmorphism support */
-  .glass {
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
-    border: 1px solid rgba(80, 135, 255, 0.25);
-    box-shadow: 0 12px 40px -20px rgba(20, 60, 140, 0.45);
+  /* Fraunces is variable: soften the terminals and let it optically size so
+     large headings feel friendly rather than editorial-severe. */
+  h1, h2, h3, .font-display {
+    font-variation-settings: "SOFT" 40, "WONK" 1, "opsz" 40;
+    letter-spacing: -0.015em;
   }
 
-  .glass-card {
-    background: linear-gradient(160deg, rgba(255, 255, 255, 0.78) 0%, rgba(228, 237, 255, 0.78) 100%);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    border: 1px solid rgba(108, 156, 255, 0.25);
-    box-shadow: 0 18px 45px -20px rgba(12, 58, 143, 0.35);
+  /* A single, consistent, high-visibility focus ring everywhere. */
+  :where(a, button, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: calc(var(--radius) - 0.375rem);
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+    color: hsl(var(--foreground));
+  }
+
+  /* Warm, unobtrusive scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-track { background: transparent; }
+  *::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover { background-clip: content-box; background-color: hsl(var(--muted-foreground) / 0.5); }
+}
+
+@layer components {
+  /* ---- surfaces -------------------------------------------------------- */
+
+  /* The workhorse surface. Subtle top highlight gives a soft, tactile edge
+     without the dated heavy-glass look. */
+  .surface {
+    @apply rounded-3xl border bg-card shadow-card;
+    background-image: linear-gradient(180deg, hsl(0 0% 100% / 0.6), transparent 40%);
+  }
+
+  .surface-quiet {
+    @apply rounded-2xl border bg-muted/40;
+  }
+
+  .surface-raised {
+    @apply rounded-3xl border bg-card shadow-lifted;
+  }
+
+  /* ---- warm ambient background ---------------------------------------- */
+  /* Two soft colour washes + a fine grain. The grain is what keeps large flat
+     areas from looking like flat digital paint. */
+  .app-canvas {
+    position: relative;
+    isolation: isolate;
+  }
+  .app-canvas::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background:
+      radial-gradient(60rem 40rem at 12% -8%, hsl(var(--primary) / 0.10), transparent 60%),
+      radial-gradient(45rem 32rem at 92% 4%, hsl(var(--accent) / 0.09), transparent 62%),
+      radial-gradient(40rem 30rem at 50% 108%, hsl(var(--info) / 0.06), transparent 60%);
+  }
+  .app-canvas::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.22;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 260 260' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.16'/%3E%3C/svg%3E");
+    mix-blend-mode: multiply;
+  }
+
+  /* ---- type helpers ---------------------------------------------------- */
+  .eyebrow {
+    @apply text-2xs font-semibold uppercase tracking-[0.16em] text-muted-foreground;
+  }
+
+  .headline {
+    @apply font-display font-semibold text-foreground;
+  }
+
+  /* Gradient text. The stops stay dark enough that every character keeps
+     readable contrast on the cream background - a gradient that fades into a
+     pale tint at one end fails badly for low-vision users. */
+  .text-gradient {
+    background: linear-gradient(
+      118deg,
+      hsl(var(--primary-strong)) 0%,
+      hsl(var(--primary)) 42%,
+      hsl(14 78% 48%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Forced-colours mode discards background-clip text entirely. */
+  @media (forced-colors: active) {
+    .text-gradient { color: CanvasText; }
+  }
+
+  /* ---- bits ------------------------------------------------------------ */
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium;
+  }
+
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-muted;
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(90deg, transparent, hsl(0 0% 100% / 0.55), transparent);
+  }
+
+  /* Row that lifts slightly on hover - used for list/table rows. */
+  .row-interactive {
+    @apply transition-all duration-200 ease-spring hover:-translate-y-0.5 hover:shadow-lifted;
   }
 }
 
-/* Screen reader only class for accessibility */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
+@layer utilities {
+  .animation-delay-75  { animation-delay: 75ms; }
+  .animation-delay-150 { animation-delay: 150ms; }
+  .animation-delay-225 { animation-delay: 225ms; }
+  .animation-delay-300 { animation-delay: 300ms; }
+  .animation-delay-450 { animation-delay: 450ms; }
+
+  /* Numeric columns should never jitter as values change. */
+  .tabular { font-variant-numeric: tabular-nums; }
 }
 
-/* Focus visible styles for keyboard navigation */
-*:focus-visible {
-  outline: 2px solid #3b82f6;
-  outline-offset: 2px;
-}
-
-/* Reduced motion support */
+/* Respect the OS setting. Everything still works, it just stops moving. */
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
+}
+
+@media print {
+  .app-canvas::before,
+  .app-canvas::after { display: none; }
+  body { background: #fff; }
 }
