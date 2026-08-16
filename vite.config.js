@@ -19,9 +19,16 @@ export default defineConfig({
         drop_debugger: true,
       },
     },
+    // Keep manual chunking minimal. Splitting a library into its own chunk
+    // without its transitive deps can produce a circular chunk-initialization
+    // order that throws "Cannot access 'X' before initialization" at load, in
+    // production only. That previously happened here by splitting recharts
+    // away from its d3-* packages, and it broke the entire deployed site.
+    // Verify a production build before adding entries below.
     rollupOptions: {
       output: {
         manualChunks(id) {
+          // react/react-dom only: self-contained, no cross-chunk circularity
           if (id.includes('node_modules/react/') || id.includes('node_modules/react-dom/')) {
             return 'vendor-react';
           }
