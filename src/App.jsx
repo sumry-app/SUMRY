@@ -640,85 +640,153 @@ function GoalsView({ store, setStore }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-3 flex-wrap items-center">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="headline text-2xl">Goals</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {filtered.length === store.goals.length
+              ? `${store.goals.length} ${store.goals.length === 1 ? "goal" : "goals"} across your roster.`
+              : `Showing ${filtered.length} of ${store.goals.length} goals.`}
+          </p>
+        </div>
+        <Button className="shrink-0" onClick={() => setEditDialog({})}>
+          <Plus strokeWidth={2.4} />
+          Add goal
+        </Button>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2.5">
         <Select value={studentFilter} onValueChange={setStudentFilter}>
-          <SelectTrigger className="w-48 bg-white/80 backdrop-blur-xl border-black/5"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-52">
+            <SelectValue placeholder="All students" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All students</SelectItem>
             {store.students.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
           </SelectContent>
         </Select>
         <Select value={areaFilter} onValueChange={setAreaFilter}>
-          <SelectTrigger className="w-48 bg-white/80 backdrop-blur-xl border-black/5"><SelectValue /></SelectTrigger>
+          <SelectTrigger className="w-full sm:w-44">
+            <SelectValue placeholder="All areas" />
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All areas</SelectItem>
             {areas.map(a => <SelectItem key={a} value={a}>{a}</SelectItem>)}
           </SelectContent>
         </Select>
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" strokeWidth={2} />
+        <div className="relative w-full sm:w-72">
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={2} />
           <Input
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Search goals..."
-            className="pl-9 bg-white/80 backdrop-blur-xl border-black/5"
+            placeholder="Search goals…"
+            aria-label="Search goals"
+            className="pl-10"
           />
         </div>
-        <Button onClick={() => setEditDialog({})}>
-          <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Goal
-        </Button>
       </div>
 
       {filtered.length === 0 ? (
-        <Card className="bg-white/80 backdrop-blur-xl border-black/5"><CardContent className="p-12 text-center">
-          <TrendingUp className="h-12 w-12 mx-auto mb-3 text-slate-300" strokeWidth={2}/>
-          <p className="text-slate-500 font-medium">
-            {store.goals.length === 0 ? "No goals yet" : "No goals match your filters"}
-          </p>
-        </CardContent></Card>
+        store.goals.length === 0 ? (
+          <EmptyState
+            icon={TrendingUp}
+            title="No goals yet"
+            description="A goal is the measurable target you'll track against — a baseline, a target, and the metric in between. Start from a template or write your own."
+            action="Create a goal"
+            onAction={() => setEditDialog({})}
+          />
+        ) : (
+          <EmptyState
+            icon={Filter}
+            title="Nothing matches those filters"
+            description="Try widening your search or clearing the filters."
+            action="Clear filters"
+            onAction={() => { setStudentFilter("all"); setAreaFilter("all"); setSearchTerm(""); }}
+          />
+        )
       ) : (
         <div className="space-y-3">
-          {filtered.map(g => {
+          {filtered.map((g, i) => {
             const logs = store.logs.filter(l => l.goalId === g.id);
             const student = store.students.find(s => s.id === g.studentId);
             const status = getProgressStatus(logs, g.baseline, g.target);
 
+            const sorted = [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
+            const latest = sorted[sorted.length - 1];
+            const base = parseScore(g.baseline);
+            const targ = parseScore(g.target);
+            const curr = latest ? parseScore(latest.score) : null;
+            let pct = null;
+            if (curr !== null && base !== null && targ !== null && targ !== base) {
+              pct = Math.max(0, Math.min(100, ((curr - base) / (targ - base)) * 100));
+            }
+
+            const tone =
+              status.status === "on-track" ? "success"
+              : status.status === "off-track" ? "warning"
+              : "primary";
+
             return (
-              <Card key={g.id} className="bg-white/80 backdrop-blur-xl border-black/5 hover:shadow-md transition-all">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <Badge variant="outline" className="border-slate-200">{g.area}</Badge>
-                        <span className="text-sm font-medium text-slate-700">{student?.name}</span>
-                        <Badge
-                          variant={status.color === 'green' ? 'default' : status.color === 'red' ? 'destructive' : 'secondary'}
-                          className="ml-2"
-                        >
-                          {status.color === 'green' && <CheckCircle className="h-3 w-3 mr-1" strokeWidth={2}/>}
-                          {status.color === 'red' && <AlertTriangle className="h-3 w-3 mr-1" strokeWidth={2}/>}
-                          {logs.length} logs
-                        </Badge>
-                      </div>
-                      <p className="text-sm text-slate-900 font-medium mb-2">{g.description}</p>
-                      <div className="text-xs text-slate-500">
-                        Baseline: {g.baseline || "—"} → Target: {g.target || "—"} ({g.metric})
-                      </div>
+              <div
+                key={g.id}
+                className={cn("surface row-interactive animate-fade-up p-5", i === 1 && "animation-delay-75", i > 1 && "animation-delay-150")}
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">{g.area}</Badge>
+                      <span className="text-sm font-semibold">{student?.name}</span>
+                      <Badge
+                        variant={
+                          status.status === "on-track" ? "success"
+                          : status.status === "off-track" ? "warning"
+                          : "outline"
+                        }
+                      >
+                        {status.status === "on-track" && <CheckCircle strokeWidth={2.4} />}
+                        {status.status === "off-track" && <AlertTriangle strokeWidth={2.4} />}
+                        {status.label}
+                      </Badge>
                     </div>
-                    <div className="flex gap-1 flex-shrink-0">
-                      <Button size="sm" variant="ghost" onClick={() => setDetailsDialog(g)} className="text-slate-600 hover:text-slate-900">
-                        <Eye className="h-4 w-4" strokeWidth={2}/>
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={() => setEditDialog(g)} className="text-slate-600 hover:text-slate-900">
-                        <Edit className="h-4 w-4" strokeWidth={2}/>
-                      </Button>
-                      <ConfirmButton onConfirm={() => handleDelete(g.id)}>
-                        <Trash2 className="h-4 w-4" strokeWidth={2}/>
-                      </ConfirmButton>
+
+                    <p className="mt-2.5 text-sm font-medium leading-relaxed">{g.description}</p>
+
+                    <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+                      <span>
+                        Baseline <span className="font-semibold tabular text-foreground">{g.baseline || "—"}</span>
+                        {" → "}
+                        Target <span className="font-semibold tabular text-foreground">{g.target || "—"}</span>
+                        {g.metric && <span className="ml-1">{g.metric}</span>}
+                      </span>
+                      <span>
+                        {logs.length} {logs.length === 1 ? "entry" : "entries"}
+                        {latest && <span className="ml-1">· latest {latest.score}</span>}
+                      </span>
                     </div>
+
+                    {pct !== null && (
+                      <div className="mt-3 flex items-center gap-3">
+                        <Progress value={pct} tone={tone} label={`${g.area} progress`} className="max-w-md flex-1" />
+                        <span className="shrink-0 text-xs font-semibold tabular text-muted-foreground">
+                          {Math.round(pct)}%
+                        </span>
+                      </div>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
+
+                  <div className="flex shrink-0 gap-1">
+                    <Button size="icon-sm" variant="ghost" onClick={() => setDetailsDialog(g)} aria-label={`View details for ${g.area} goal`} title="View details">
+                      <Eye strokeWidth={2} />
+                    </Button>
+                    <Button size="icon-sm" variant="ghost" onClick={() => setEditDialog(g)} aria-label={`Edit ${g.area} goal`} title="Edit goal">
+                      <Edit strokeWidth={2} />
+                    </Button>
+                    <ConfirmButton onConfirm={() => handleDelete(g.id)}>
+                      <Trash2 className="size-4" strokeWidth={2} />
+                    </ConfirmButton>
+                  </div>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -824,96 +892,159 @@ function ProgressView({ store, setStore }) {
   };
 
   return (
-    <div className="space-y-6">
-      <Card className="bg-white/80 backdrop-blur-xl border-black/5">
-        <CardContent className="p-6">
-          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-            <h3 className="text-lg font-semibold text-slate-900">Log Progress</h3>
-            <Button variant="outline" size="sm" onClick={exportLogsToCSV} className="border-slate-200">
-              <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Export Logs
-            </Button>
-          </div>
-          <div className="space-y-4">
-            <Select value={goalFilter} onValueChange={setGoalFilter}>
-              <SelectTrigger className="bg-white/80 backdrop-blur-xl border-black/5">
-                <SelectValue placeholder="Select goal" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All goals</SelectItem>
-                {store.goals.map(g => {
-                  const student = store.students.find(s => s.id === g.studentId);
-                  return (
-                    <SelectItem key={g.id} value={g.id}>
-                      {student?.name} - {g.area}: {g.description.slice(0, 50)}...
-                    </SelectItem>
-                  );
-                })}
-              </SelectContent>
-            </Select>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:items-start">
 
-            {goalFilter !== "all" && (
+      {/* ---- entry form ---- */}
+      <div className="surface animate-fade-up p-5 lg:sticky lg:top-24">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="headline text-lg">Log progress</h3>
+          <Button variant="ghost" size="sm" onClick={exportLogsToCSV}>
+            <Download strokeWidth={2.2} />
+            CSV
+          </Button>
+        </div>
+
+        {store.goals.length === 0 ? (
+          <EmptyHint icon={AlertTriangle} className="mt-4">
+            Add a goal before you can log progress against it.
+          </EmptyHint>
+        ) : (
+          <div className="mt-5 space-y-4">
+            <div className="space-y-1.5">
+              <Label>Goal</Label>
+              <Select value={goalFilter} onValueChange={setGoalFilter}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Choose a goal" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All goals</SelectItem>
+                  {store.goals.map(g => {
+                    const student = store.students.find(s => s.id === g.studentId);
+                    return (
+                      <SelectItem key={g.id} value={g.id}>
+                        {student?.name} · {g.area}
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {goalFilter === "all" ? (
+              <p className="rounded-xl border border-dashed bg-muted/40 px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
+                Pick a specific goal above to record a new entry.
+              </p>
+            ) : (
               <>
-                <Input
-                  type="date"
-                  value={dateISO}
-                  onChange={e => setDateISO(e.target.value)}
-                  className="bg-white/80 backdrop-blur-xl border-black/5"
-                />
-                <Input
-                  placeholder="Score (e.g., 85, 90%)"
-                  value={score}
-                  onChange={e => setScore(e.target.value)}
-                  className="bg-white/80 backdrop-blur-xl border-black/5"
-                />
-                <Textarea
-                  placeholder="Notes (optional)"
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  rows={3}
-                  className="bg-white/80 backdrop-blur-xl border-black/5"
-                />
-                <Button onClick={handleAddLog} className="w-full">
-                  <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Log Progress
+                <div className="space-y-1.5">
+                  <Label htmlFor="log-date">Date</Label>
+                  <Input id="log-date" type="date" value={dateISO} onChange={e => setDateISO(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="log-score">Score</Label>
+                  <Input
+                    id="log-score"
+                    placeholder="e.g. 72"
+                    value={score}
+                    onChange={e => setScore(e.target.value)}
+                    inputMode="decimal"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="log-notes">
+                    Notes <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Textarea
+                    id="log-notes"
+                    placeholder="What supported this session?"
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    rows={3}
+                  />
+                </div>
+                <Button onClick={handleAddLog} className="w-full" size="lg" disabled={!score.trim()}>
+                  <Plus strokeWidth={2.4} />
+                  Save entry
                 </Button>
               </>
             )}
           </div>
-        </CardContent>
-      </Card>
+        )}
+      </div>
 
-      <div className="space-y-3">
-        {filteredGoals.map(goal => {
-          const logs = store.logs.filter(l => l.goalId === goal.id);
-          const student = store.students.find(s => s.id === goal.studentId);
+      {/* ---- history ---- */}
+      <div className="space-y-4">
+        {store.goals.length === 0 ? (
+          <EmptyState
+            icon={Calendar}
+            title="Nothing to track yet"
+            description="Progress entries live against a goal. Create a goal first and this is where the history will build up."
+          />
+        ) : (
+          filteredGoals.map((goal, i) => {
+            const logs = store.logs
+              .filter(l => l.goalId === goal.id)
+              .sort((a, b) => b.dateISO.localeCompare(a.dateISO));
+            const student = store.students.find(s => s.id === goal.studentId);
+            const targ = parseScore(goal.target);
 
-          return (
-            <Card key={goal.id} className="bg-white/80 backdrop-blur-xl border-black/5">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between gap-4 mb-3">
-                  <div>
-                    <div className="flex items-center gap-2 mb-1">
-                      <Badge variant="outline" className="border-slate-200">{goal.area}</Badge>
-                      <span className="text-sm font-medium text-slate-700">{student?.name}</span>
+            return (
+              <div
+                key={goal.id}
+                className={cn("surface animate-fade-up p-5", i === 1 && "animation-delay-75", i > 1 && "animation-delay-150")}
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="secondary">{goal.area}</Badge>
+                      <span className="text-sm font-semibold">{student?.name}</span>
                     </div>
-                    <p className="text-sm text-slate-900">{goal.description}</p>
+                    <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{goal.description}</p>
                   </div>
-                  <Badge variant="secondary">{logs.length} logs</Badge>
+                  <Badge variant={logs.length ? "default" : "outline"} className="shrink-0">
+                    {logs.length} {logs.length === 1 ? "entry" : "entries"}
+                  </Badge>
                 </div>
 
-                {logs.length > 0 && (
-                  <div className="space-y-2 mt-3 pt-3 border-t border-slate-200">
-                    {logs.slice(0, 3).map(log => (
-                      <div key={log.id} className="flex items-center justify-between text-sm">
-                        <span className="text-slate-600">{log.dateISO}</span>
-                        <span className="font-medium">{log.score} {goal.metric}</span>
-                      </div>
-                    ))}
-                  </div>
+                {logs.length === 0 ? (
+                  <EmptyHint icon={Plus} className="mt-4">
+                    No entries recorded yet.
+                  </EmptyHint>
+                ) : (
+                  <ul className="mt-4 space-y-0.5 border-t pt-3">
+                    {logs.slice(0, 5).map(log => {
+                      const val = parseScore(log.score);
+                      const met = val !== null && targ !== null && val >= targ;
+                      return (
+                        <li
+                          key={log.id}
+                          className="flex items-center justify-between gap-3 rounded-xl px-2.5 py-2 text-sm transition-colors hover:bg-muted/50"
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <span className="shrink-0 tabular text-muted-foreground">{log.dateISO}</span>
+                            {log.notes && (
+                              <span className="truncate text-xs text-muted-foreground">{log.notes}</span>
+                            )}
+                          </div>
+                          <span className="flex shrink-0 items-center gap-1.5 font-semibold tabular">
+                            {met && <CheckCircle className="size-3.5 text-success" strokeWidth={2.4} />}
+                            {log.score}
+                            <span className="text-xs font-normal text-muted-foreground">{goal.metric}</span>
+                          </span>
+                        </li>
+                      );
+                    })}
+                    {logs.length > 5 && (
+                      <li className="px-2.5 pt-1.5 text-xs text-muted-foreground">
+                        + {logs.length - 5} earlier {logs.length - 5 === 1 ? "entry" : "entries"}
+                      </li>
+                    )}
+                  </ul>
                 )}
-              </CardContent>
-            </Card>
-          );
-        })}
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -990,66 +1121,126 @@ function StudentsView({ store, setStore }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-2xl font-bold text-slate-900">Students</h2>
-        <div className="flex flex-1 md:flex-initial items-center gap-2 justify-end">
-          <div className="relative w-full max-w-xs">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" strokeWidth={2} />
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="headline text-2xl">Students</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {store.students.length === 0
+              ? "No students on your roster yet."
+              : `${store.students.length} ${store.students.length === 1 ? "student" : "students"} on your roster.`}
+          </p>
+        </div>
+        <div className="flex w-full flex-1 items-center gap-2.5 sm:w-auto sm:justify-end">
+          <div className="relative w-full sm:max-w-xs">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" strokeWidth={2} />
             <Input
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
-              placeholder="Search students..."
-              className="pl-9 bg-white/80 backdrop-blur-xl border-black/5"
+              placeholder="Search students…"
+              aria-label="Search students"
+              className="pl-10"
             />
           </div>
-          <Button onClick={() => setEditDialog({})}>
-            <Plus className="h-4 w-4 mr-2" strokeWidth={2}/>Add Student
+          <Button className="shrink-0" onClick={() => setEditDialog({})}>
+            <Plus strokeWidth={2.4} />
+            <span className="hidden sm:inline">Add student</span>
           </Button>
         </div>
       </div>
 
       {filteredStudents.length === 0 ? (
-        <Card className="bg-white/80 backdrop-blur-xl border-black/5">
-          <CardContent className="p-12 text-center">
-            <Users className="h-12 w-12 mx-auto mb-3 text-slate-300" strokeWidth={2}/>
-            <p className="text-slate-500 font-medium">
-              {store.students.length === 0 ? "No students yet" : "No students match your filters"}
-            </p>
-          </CardContent>
-        </Card>
+        store.students.length === 0 ? (
+          <EmptyState
+            icon={Users}
+            title="Add your first student"
+            description="Everything in SUMRY hangs off a student — their goals, progress data, and the reports you'll generate later."
+            action="Add a student"
+            onAction={() => setEditDialog({})}
+          />
+        ) : (
+          <EmptyState
+            icon={Search}
+            title="No matches"
+            description={`Nothing on your roster matches “${searchTerm}”.`}
+            action="Clear search"
+            onAction={() => setSearchTerm("")}
+          />
+        )
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredStudents.map(student => {
-            const goalsCount = store.goals.filter(g => g.studentId === student.id).length;
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {filteredStudents.map((student, i) => {
+            const studentGoals = store.goals.filter(g => g.studentId === student.id);
+            const goalIds = new Set(studentGoals.map(g => g.id));
+            const logCount = store.logs.filter(l => goalIds.has(l.goalId)).length;
+            const onTrack = studentGoals.filter(g => {
+              const logs = store.logs.filter(l => l.goalId === g.id);
+              return getProgressStatus(logs, g.baseline, g.target).status === "on-track";
+            }).length;
 
             return (
-              <Card key={student.id} className="bg-white/80 backdrop-blur-xl border-black/5 hover:shadow-md transition-all">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between mb-3">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{student.name}</h3>
-                      <p className="text-sm text-slate-600">Grade {student.grade}</p>
-                    </div>
-                    <Badge variant="secondary">{goalsCount} goals</Badge>
+              <div
+                key={student.id}
+                className={cn(
+                  "surface group flex animate-fade-up flex-col p-5 transition-all duration-300 ease-spring hover:-translate-y-1 hover:shadow-lifted",
+                  i % 3 === 1 && "animation-delay-75",
+                  i % 3 === 2 && "animation-delay-150"
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-primary-soft font-display text-lg font-semibold text-primary-strong">
+                    {student.name.charAt(0).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate font-semibold leading-tight">{student.name}</h3>
+                    <p className="mt-0.5 truncate text-xs text-muted-foreground">
+                      {student.grade ? `Grade ${student.grade}`.replace(/^Grade Grade/i, "Grade") : "Grade not set"}
+                    </p>
                   </div>
-                  {student.disability && (
-                    <p className="text-xs text-slate-500 mb-3">{student.disability}</p>
-                  )}
-                  <div className="flex gap-1">
-                    <Button size="sm" variant="ghost" onClick={() => {
+                </div>
+
+                {student.disability && (
+                  <p className="mt-3 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                    {student.disability}
+                  </p>
+                )}
+
+                <div className="mt-4 grid grid-cols-3 gap-2 rounded-2xl border bg-muted/30 p-3 text-center">
+                  <div>
+                    <p className="font-display text-lg font-semibold leading-none tabular">{studentGoals.length}</p>
+                    <p className="mt-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">
+                      {studentGoals.length === 1 ? "Goal" : "Goals"}
+                    </p>
+                  </div>
+                  <div className="border-x">
+                    <p className="font-display text-lg font-semibold leading-none tabular">{logCount}</p>
+                    <p className="mt-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">Entries</p>
+                  </div>
+                  <div>
+                    <p className="font-display text-lg font-semibold leading-none tabular text-success">{onTrack}</p>
+                    <p className="mt-1 text-2xs font-medium uppercase tracking-wide text-muted-foreground">On track</p>
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center gap-1 border-t pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
                       setEditDialog(student);
                       setName(student.name);
                       setGrade(student.grade);
                       setDisability(student.disability);
-                    }} className="text-slate-600 hover:text-slate-900">
-                      <Edit className="h-4 w-4" strokeWidth={2}/>
-                    </Button>
-                    <ConfirmButton onConfirm={() => handleDelete(student.id)}>
-                      <Trash2 className="h-4 w-4" strokeWidth={2}/>
-                    </ConfirmButton>
-                  </div>
-                </CardContent>
-              </Card>
+                    }}
+                  >
+                    <Edit strokeWidth={2} />
+                    Edit
+                  </Button>
+                  <ConfirmButton onConfirm={() => handleDelete(student.id)}>
+                    <Trash2 className="size-4" strokeWidth={2} />
+                    <span className="ml-1.5">Remove</span>
+                  </ConfirmButton>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -1057,42 +1248,47 @@ function StudentsView({ store, setStore }) {
 
       {editDialog && (
         <Dialog open={true} onOpenChange={() => setEditDialog(null)}>
-          <DialogContent className="bg-white/95 backdrop-blur-xl">
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>{editDialog.id ? "Edit Student" : "Add Student"}</DialogTitle>
+              <DialogTitle>{editDialog.id ? "Edit student" : "Add a student"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <div>
-                <Label>Name</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="student-name">Name</Label>
                 <Input
-                  placeholder="Student name"
+                  id="student-name"
+                  placeholder="e.g. Maya Thompson"
                   value={name}
                   onChange={e => setName(e.target.value)}
-                  className="bg-white/80 backdrop-blur-xl border-black/5"
+                  autoFocus
                 />
               </div>
-              <div>
-                <Label>Grade</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="student-grade">Grade</Label>
                 <Input
-                  placeholder="e.g., 3, 4, 5"
+                  id="student-grade"
+                  placeholder="e.g. 3rd"
                   value={grade}
                   onChange={e => setGrade(e.target.value)}
-                  className="bg-white/80 backdrop-blur-xl border-black/5"
                 />
               </div>
-              <div>
-                <Label>Disability (Optional)</Label>
+              <div className="space-y-1.5">
+                <Label htmlFor="student-disability">
+                  Classification <span className="font-normal text-muted-foreground">(optional)</span>
+                </Label>
                 <Input
-                  placeholder="e.g., Specific Learning Disability, Autism"
+                  id="student-disability"
+                  placeholder="e.g. Specific Learning Disability"
                   value={disability}
                   onChange={e => setDisability(e.target.value)}
-                  className="bg-white/80 backdrop-blur-xl border-black/5"
                 />
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditDialog(null)}>Cancel</Button>
-              <Button onClick={handleSave}>Save Student</Button>
+              <Button variant="ghost" onClick={() => setEditDialog(null)}>Cancel</Button>
+              <Button onClick={handleSave} disabled={!name.trim()}>
+                {editDialog.id ? "Save changes" : "Add student"}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
