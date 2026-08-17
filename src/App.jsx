@@ -32,7 +32,9 @@ import {
 import { cn } from "@/lib/utils";
 import { StatCard, ProgressRing } from "@/components/ui/stat-card";
 import { EmptyState, EmptyHint } from "@/components/ui/empty-state";
-import { usePersistentStore } from "@/hooks/usePersistentStore";
+import { isSupabaseConfigured, supabaseConfigStatus } from "@/lib/supabase";
+import { useSupabaseStore } from "@/hooks/useSupabaseStore";
+import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { useToast } from "@/components/ui/Toast";
 import { formatRelativeDate, formatShortDate, formatFullDate } from "@/lib/dates";
@@ -40,8 +42,6 @@ import { AdvancedSearch } from "@/components/search/AdvancedSearch";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { triggerNotifications } from "@/lib/notificationManager";
 
-const usersStorageKey = "sumry_users_v1";
-const currentUserKey = "sumry_current_user";
 
 // ========== SHARED COMPONENTS ==========
 function ConfirmButton({ onConfirm, children, variant, size = "sm" }) {
@@ -1610,89 +1610,165 @@ function Dashboard({ store, stats: statsOverride }) {
 }
 
 // ========== AUTHENTICATION ==========
-function hashPassword(password) {
-  // Simple hash for demo purposes - in production, use proper encryption
-  let hash = 0;
-  for (let i = 0; i < password.length; i++) {
-    const char = password.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash;
-  }
-  return hash.toString(36);
+/** Turns Supabase auth errors into something a teacher can act on. */
+function friendlyAuthError(err) {
+  const message = String(err?.message ?? "").toLowerCase();
+  if (message.includes("invalid login")) return "That email and password don't match.";
+  if (message.includes("already registered")) return "That email already has an account. Try signing in.";
+  if (message.includes("email not confirmed")) return "Confirm your email address first — check your inbox.";
+  if (message.includes("rate limit") || message.includes("too many")) return "Too many attempts. Wait a moment and try again.";
+  if (message.includes("fetch") || message.includes("network")) return "Couldn't reach the server. Check your connection.";
+  return err?.message || "Something went wrong. Please try again.";
 }
 
-function loadUsers() {
-  const raw = localStorage.getItem(usersStorageKey);
-  if (!raw) return [];
-  try { return JSON.parse(raw); } catch { return []; }
+/**
+ * Rendered when the build has no Supabase credentials. Says exactly what is
+ * missing and where to put it, rather than failing as a blank page.
+ */
+function ConfigurationNeeded() {
+  return (
+    <div className="app-canvas grid min-h-screen place-items-center px-5 py-10">
+      <div className="surface-raised w-full max-w-lg p-7 sm:p-8">
+        <span className="grid size-11 place-items-center rounded-2xl bg-warning-soft text-warning">
+          <AlertTriangle className="size-5" strokeWidth={2.2} />
+        </span>
+
+        <h1 className="headline mt-5 text-2xl">Almost configured</h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+          SUMRY can&rsquo;t reach its database because this build is missing
+          {supabaseConfigStatus.missing.length === 1 ? " a setting" : " some settings"}.
+        </p>
+
+        <ul className="mt-5 space-y-2">
+          {supabaseConfigStatus.missing.map(name => (
+            <li key={name} className="flex items-center gap-2.5 rounded-xl border bg-muted/40 px-3.5 py-2.5">
+              <XCircle className="size-4 shrink-0 text-destructive" strokeWidth={2.2} />
+              <code className="font-mono text-sm font-semibold">{name}</code>
+            </li>
+          ))}
+        </ul>
+
+        <div className="mt-6 space-y-3 border-t pt-5 text-sm leading-relaxed text-muted-foreground">
+          <p>
+            <span className="font-semibold text-foreground">Deployed:</span> add these under
+            Settings &rarr; Environment Variables in your hosting project, then redeploy
+            with the build cache disabled.
+          </p>
+          <p>
+            <span className="font-semibold text-foreground">Local:</span> add them to a
+            <code className="mx-1 rounded bg-muted px-1.5 py-0.5 font-mono text-xs">.env</code>
+            file in the project root and restart the dev server.
+          </p>
+          <p className="rounded-xl border border-warning/30 bg-warning-soft px-3.5 py-3 text-foreground">
+            The <code className="font-mono font-semibold">VITE_</code> prefix is required.
+            Vite only exposes variables that carry it, so names like
+            <code className="mx-1 font-mono">SUPABASE_URL</code> are ignored.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function saveUsers(users) {
-  localStorage.setItem(usersStorageKey, JSON.stringify(users));
+/** Placeholder that mirrors the dashboard's shape while data loads. */
+function WorkspaceSkeleton() {
+  return (
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)]" aria-busy="true">
+      <div className="space-y-4">
+        <div className="skeleton h-7 w-40" />
+        {[0, 1].map(i => (
+          <div key={i} className="surface space-y-4 p-5">
+            <div className="flex items-center gap-3">
+              <div className="skeleton size-11 rounded-2xl" />
+              <div className="flex-1 space-y-2">
+                <div className="skeleton h-4 w-40" />
+                <div className="skeleton h-3 w-24" />
+              </div>
+            </div>
+            <div className="skeleton h-2 w-full" />
+            <div className="skeleton h-2 w-4/5" />
+          </div>
+        ))}
+      </div>
+      <div className="space-y-5">
+        <div className="surface space-y-3 p-5">
+          <div className="skeleton h-4 w-28" />
+          <div className="skeleton h-12 w-full" />
+        </div>
+      </div>
+    </div>
+  );
 }
 
-function getCurrentUser() {
-  const raw = localStorage.getItem(currentUserKey);
-  if (!raw) return null;
-  try { return JSON.parse(raw); } catch { return null; }
+/** Shown while the session is still resolving on first load. */
+function BootScreen() {
+  return (
+    <div className="app-canvas grid min-h-screen place-items-center">
+      <div className="flex flex-col items-center gap-4">
+        <span className="grid size-12 animate-pulse place-items-center rounded-2xl bg-primary text-primary-foreground shadow-glow">
+          <Award className="size-6" strokeWidth={2} />
+        </span>
+        <p className="text-sm text-muted-foreground">Opening your workspace…</p>
+      </div>
+    </div>
+  );
 }
 
-function persistCurrentUser(user) {
-  if (user) {
-    localStorage.setItem(currentUserKey, JSON.stringify(user));
-  } else {
-    localStorage.removeItem(currentUserKey);
-  }
-}
-
-function LoginPage({ onLogin }) {
+function LoginPage({ auth }) {
   const [isSignup, setIsSignup] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (!email || !password || (isSignup && !name)) {
-      setError("Please fill in all fields");
+      setError("Please fill in all fields.");
+      return;
+    }
+    if (isSignup && password.length < 8) {
+      setError("Choose a password of at least 8 characters.");
       return;
     }
 
-    const users = loadUsers();
-
-    if (isSignup) {
-      // Check if user already exists
-      if (users.find(u => u.email === email)) {
-        setError("Email already registered");
-        return;
+    setBusy(true);
+    try {
+      if (isSignup) {
+        const { needsEmailConfirmation } = await auth.signUp({ email, password, name });
+        if (needsEmailConfirmation) {
+          // Supabase confirms email by default, so there is no session yet.
+          setNotice(`Almost there — confirm your email at ${email}, then sign in.`);
+          setIsSignup(false);
+          setPassword("");
+        }
+      } else {
+        await auth.signIn(email, password);
       }
+      // On success the auth listener swaps this screen out; nothing to do here.
+    } catch (err) {
+      setError(friendlyAuthError(err));
+    } finally {
+      setBusy(false);
+    }
+  };
 
-      // Create new user
-      const newUser = {
-        id: uid(),
-        email,
-        name,
-        passwordHash: hashPassword(password),
-        createdAt: new Date().toISOString()
-      };
-
-      users.push(newUser);
-      saveUsers(users);
-      persistCurrentUser(newUser);
-      onLogin(newUser);
-    } else {
-      // Login
-      const user = users.find(u => u.email === email);
-      if (!user || user.passwordHash !== hashPassword(password)) {
-        setError("Invalid email or password");
-        return;
-      }
-
-      persistCurrentUser(user);
-      onLogin(user);
+  const handleReset = async () => {
+    if (!email) {
+      setError("Enter your email address first, then choose Reset password.");
+      return;
+    }
+    setError("");
+    try {
+      await auth.resetPassword(email);
+      setNotice(`If an account exists for ${email}, a reset link is on its way.`);
+    } catch (err) {
+      setError(friendlyAuthError(err));
     }
   };
 
@@ -1825,10 +1901,32 @@ function LoginPage({ onLogin }) {
                 </div>
               )}
 
-              <Button type="submit" size="lg" className="w-full">
-                {isSignup ? "Create account" : "Sign in"}
-                <ChevronRight className="size-4" strokeWidth={2.4} />
+              {notice && (
+                <div
+                  role="status"
+                  className="flex items-start gap-2.5 rounded-xl border border-success/25 bg-success-soft p-3"
+                >
+                  <Mail className="mt-0.5 size-4 shrink-0 text-success" strokeWidth={2.2} />
+                  <p className="text-sm font-medium text-success">{notice}</p>
+                </div>
+              )}
+
+              <Button type="submit" size="lg" className="w-full" loading={busy}>
+                {busy
+                  ? (isSignup ? "Creating account…" : "Signing in…")
+                  : (isSignup ? "Create account" : "Sign in")}
+                {!busy && <ChevronRight className="size-4" strokeWidth={2.4} />}
               </Button>
+
+              {!isSignup && (
+                <button
+                  type="button"
+                  onClick={handleReset}
+                  className="w-full text-center text-xs text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  Forgot your password?
+                </button>
+              )}
             </form>
 
             <div className="mt-6 border-t pt-5 text-center">
@@ -1848,7 +1946,7 @@ function LoginPage({ onLogin }) {
 
           <p className="mt-5 flex items-center justify-center gap-2 text-center text-xs text-muted-foreground">
             <Shield className="size-3.5" strokeWidth={2} />
-            Student data stays on this device until you connect a workspace.
+            Student records are private to your account and encrypted in transit.
           </p>
         </div>
       </div>
@@ -1858,11 +1956,34 @@ function LoginPage({ onLogin }) {
 
 // ========== MAIN APP ==========
 export default function App() {
-  const { store, setStore, replaceStore } = usePersistentStore();
-  const [currentUser, setCurrentUserState] = useState(() => getCurrentUser());
+  // Checked before anything reaches the Supabase client, so an unconfigured
+  // build explains itself instead of erroring.
+  if (!isSupabaseConfigured) {
+    return <ConfigurationNeeded />;
+  }
+
+  return <Workspace />;
+}
+
+function Workspace() {
+  const auth = useSupabaseAuth();
   const [activeTab, setActiveTab] = useState("dashboard");
   const { isDark, toggleTheme } = useTheme();
   const toast = useToast();
+
+  const handleStoreError = useCallback((err) => {
+    toast.error("Couldn't save that change", {
+      description: err?.message ?? "Your last edit was rolled back.",
+      duration: 9000,
+    });
+  }, [toast]);
+
+  const { store, setStore, replaceStore, loading: storeLoading, saving, error: storeError } =
+    useSupabaseStore({
+      userId: auth.user?.id ?? null,
+      organization: auth.organization,
+      onError: handleStoreError,
+    });
   const [showSearch, setShowSearch] = useState(false);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
@@ -1912,9 +2033,12 @@ export default function App() {
     e.target.value = "";
   };
 
-  const handleLogout = () => {
-    persistCurrentUser(null);
-    setCurrentUserState(null);
+  const handleLogout = async () => {
+    try {
+      await auth.signOut();
+    } catch (err) {
+      toast.error("Couldn't sign out", { description: err?.message });
+    }
   };
 
   // Keyboard shortcut for search (Cmd+K / Ctrl+K)
@@ -1942,12 +2066,17 @@ export default function App() {
     }
   };
 
-  // Show login page if not authenticated
-  if (!currentUser) {
-    return <LoginPage onLogin={setCurrentUserState} />;
+  // Resolving the session first avoids flashing the sign-in screen at someone
+  // who is already signed in.
+  if (auth.status === "loading") {
+    return <BootScreen />;
   }
 
-  const firstName = (currentUser.name || "").trim().split(/\s+/)[0] || "there";
+  if (auth.status === "signedOut") {
+    return <LoginPage auth={auth} />;
+  }
+
+  const firstName = (auth.displayName || "").trim().split(/\s+/)[0] || "there";
   const hour = new Date().getHours();
   const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
   const hasData = stats.totalStudents > 0;
@@ -1991,8 +2120,19 @@ export default function App() {
                 <span className="grid size-7 place-items-center rounded-full bg-primary-soft text-xs font-bold text-primary-strong">
                   {firstName.charAt(0).toUpperCase()}
                 </span>
-                <span className="max-w-[9rem] truncate text-sm font-semibold">{currentUser.name}</span>
+                <span className="max-w-[9rem] truncate text-sm font-semibold">{auth.displayName}</span>
               </div>
+
+              {saving && (
+                <span
+                  className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex"
+                  role="status"
+                  aria-live="polite"
+                >
+                  <span className="size-1.5 animate-pulse rounded-full bg-primary" />
+                  Saving…
+                </span>
+              )}
 
               <Button
                 variant="ghost"
@@ -2014,6 +2154,23 @@ export default function App() {
         <main className="flex-1 pb-20">
           <section className="pt-10">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+              {storeError && (
+                <div
+                  role="alert"
+                  className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-destructive/30 bg-destructive-soft p-4"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <AlertTriangle className="mt-0.5 size-4 shrink-0 text-destructive" strokeWidth={2.2} />
+                    <p className="text-sm font-medium text-destructive">
+                      {storeError.message || "Couldn't reach your workspace."}
+                    </p>
+                  </div>
+                  <Button size="sm" variant="outline" onClick={() => window.location.reload()}>
+                    Retry
+                  </Button>
+                </div>
+              )}
 
               {/* greeting + primary actions */}
               <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
@@ -2116,7 +2273,11 @@ export default function App() {
                 </TabsList>
 
                 <TabsContent value="dashboard">
-                  <Dashboard store={store} stats={stats} />
+                  {storeLoading ? (
+                    <WorkspaceSkeleton />
+                  ) : (
+                    <Dashboard store={store} stats={stats} />
+                  )}
                 </TabsContent>
 
                 <TabsContent value="students">
