@@ -1,0 +1,145 @@
+/*
+ * Print styles.
+ *
+ * IEP meetings run on paper. Printing a web app usually produces navigation
+ * chrome, a wall of colour, and cards sliced across page breaks. This turns the
+ * dashboard into something you can put in front of a team: black text on white,
+ * a heading that identifies the document, and each student kept whole on the
+ * page.
+ *
+ * Applied via a `print:` friendly set of rules rather than a separate route, so
+ * whatever is on screen is what prints - no second implementation to drift.
+ */
+
+@media print {
+  /* ---- page setup ---------------------------------------------------- */
+  @page {
+    size: A4 portrait;
+    margin: 16mm 14mm 18mm;
+  }
+
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+    /* Printers render light grey text as illegible dots. */
+    font-size: 10.5pt;
+    line-height: 1.45;
+  }
+
+  /* Let the content flow rather than sit inside scrolling panes. */
+  #root,
+  main,
+  section {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+
+  /* ---- strip the interface ------------------------------------------- */
+  header,
+  nav,
+  footer,
+  [role="tablist"],
+  [role="dialog"],
+  [data-print="hide"],
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  /* Decorative washes and grain waste toner and muddy the text. */
+  .app-canvas::before,
+  .app-canvas::after {
+    display: none !important;
+  }
+
+  /* ---- flatten surfaces ----------------------------------------------- */
+  .surface,
+  .surface-raised,
+  .surface-quiet,
+  [class*="shadow-"] {
+    box-shadow: none !important;
+    background-image: none !important;
+    background-color: #fff !important;
+    border: 1px solid #cfcfcf !important;
+    border-radius: 4px !important;
+  }
+
+  /* ---- typography ------------------------------------------------------ */
+  h1, h2, h3, h4 {
+    color: #000 !important;
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  /* Muted greys are for screens; on paper they read as damage. */
+  .text-muted-foreground,
+  [class*="text-muted"] {
+    color: #3a3a3a !important;
+  }
+
+  .text-gradient {
+    background: none !important;
+    -webkit-text-fill-color: #000 !important;
+    color: #000 !important;
+  }
+
+  /* ---- keep records intact across pages -------------------------------- */
+  .surface,
+  li,
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+
+  /* ---- progress bars still need to read in greyscale ------------------- */
+  [role="progressbar"] {
+    border: 1px solid #000 !important;
+    background: #fff !important;
+    height: 8px !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  [role="progressbar"] > * {
+    background: #000 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+
+  /* Badges become outlines rather than filled blocks. */
+  [class*="rounded-full"] {
+    border: 1px solid #666 !important;
+    background: transparent !important;
+    color: #000 !important;
+  }
+
+  /* Spell out link targets that would otherwise be lost. */
+  a[href^="http"]::after {
+    content: " (" attr(href) ")";
+    font-size: 8.5pt;
+    color: #555;
+  }
+
+  /* ---- document header, screen-hidden ---------------------------------- */
+  .print-header {
+    display: block !important;
+    margin-bottom: 10mm;
+    padding-bottom: 4mm;
+    border-bottom: 2px solid #000;
+  }
+
+  /* Repeat context at the top of every printed page. */
+  .print-only {
+    display: block !important;
+  }
+}
+
+/* Present only when printing. */
+.print-only,
+.print-header {
+  display: none;
+}

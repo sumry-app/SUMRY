@@ -1,3 +1,6 @@
+@import "./styles/fonts.css";
+@import "./styles/print.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -125,7 +128,10 @@
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     font-family: theme('fontFamily.sans');
-    font-feature-settings: "cv02", "cv03", "cv04", "ss01";
+    /* cv02/cv03/cv04/ss01 were Inter's stylistic sets, left over from when the
+       stack named Inter. They mean nothing to Plus Jakarta Sans. Kerning and
+       contextual alternates are what this family actually benefits from. */
+    font-feature-settings: "kern" 1, "calt" 1;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
@@ -290,8 +296,3 @@
   }
 }
 
-@media print {
-  .app-canvas::before,
-  .app-canvas::after { display: none; }
-  body { background: #fff; }
-}

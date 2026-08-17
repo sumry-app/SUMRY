@@ -1,0 +1,13 @@
+The fonts in this directory are licensed under the SIL Open Font License, Version 1.1.
+
+  Plus Jakarta Sans — Copyright (c) Tokotype Foundry
+    https://github.com/tokotype/PlusJakartaSans
+
+  Fraunces — Copyright (c) The Fraunces Project Authors
+    https://github.com/undercasetype/Fraunces
+
+The SIL Open Font License permits the fonts to be used, studied, modified and
+redistributed freely, including bundled with software, provided they are not
+sold by themselves and any derivative retains the licence.
+
+Full licence text: https://openfontlicense.org

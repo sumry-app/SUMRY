@@ -38,7 +38,7 @@ import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { useToast } from "@/components/ui/Toast";
 import { formatRelativeDate, formatShortDate, formatFullDate } from "@/lib/dates";
-import { AdvancedSearch } from "@/components/search/AdvancedSearch";
+import { CommandPalette } from "@/components/command/CommandPalette";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { triggerNotifications } from "@/lib/notificationManager";
 
@@ -2055,16 +2055,32 @@ function Workspace() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Handle navigation from search results
-  const handleSearchNavigation = (type, data) => {
-    if (type === 'student') {
-      setActiveTab('students');
-    } else if (type === 'goal') {
-      setActiveTab('goals');
-    } else if (type === 'log') {
-      setActiveTab('progress');
-    }
-  };
+  // Everything the palette can do. Ordered by how often it is likely wanted.
+  const commands = useMemo(() => [
+    { id: "goto-dashboard", label: "Go to Dashboard", icon: BarChart3, keywords: "home overview summary",
+      run: () => setActiveTab("dashboard"), priority: 4 },
+    { id: "goto-students", label: "Go to Students", icon: Users, keywords: "roster class children",
+      run: () => setActiveTab("students"), priority: 4 },
+    { id: "goto-goals", label: "Go to Goals", icon: TrendingUp, keywords: "objectives targets iep",
+      run: () => setActiveTab("goals"), priority: 4 },
+    { id: "goto-progress", label: "Go to Progress", icon: Calendar, keywords: "log data entries sessions",
+      run: () => setActiveTab("progress"), priority: 4 },
+    { id: "add-student", label: "Add a student", icon: Plus, keywords: "new create enrol enroll",
+      run: () => setActiveTab("students"), priority: 6 },
+    { id: "log-progress", label: "Log progress", icon: Plus, keywords: "new entry record score data",
+      run: () => setActiveTab("progress"), priority: 6 },
+    { id: "print-report", label: "Print progress report", icon: Printer, keywords: "pdf export meeting paper",
+      run: () => window.print(), priority: 3 },
+    { id: "export-data", label: "Export all data (JSON)", icon: Download, keywords: "backup download save",
+      run: () => exportJSON(store), priority: 2 },
+    { id: "import-data", label: "Import data", icon: Upload, keywords: "restore upload load",
+      run: () => document.getElementById("import-input")?.click(), priority: 1 },
+    { id: "toggle-theme", label: isDark ? "Switch to light theme" : "Switch to dark theme",
+      icon: isDark ? Sun : Moon, keywords: "dark light appearance contrast night",
+      run: toggleTheme, priority: 2 },
+    { id: "sign-out", label: "Sign out", icon: LogOut, keywords: "logout leave exit",
+      run: handleLogout, priority: 0 },
+  ], [store, isDark, toggleTheme, handleLogout]);
 
   // Resolving the session first avoids flashing the sign-in screen at someone
   // who is already signed in.
@@ -2154,6 +2170,19 @@ function Workspace() {
         <main className="flex-1 pb-20">
           <section className="pt-10">
             <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+
+              {/* Identifies the printout; hidden on screen. */}
+              <div className="print-header">
+                <h1 style={{ fontSize: "16pt", fontWeight: 700, margin: 0 }}>
+                  SUMRY — IEP Progress Summary
+                </h1>
+                <p style={{ fontSize: "10pt", margin: "2mm 0 0" }}>
+                  Prepared by {auth.displayName} · {formatFullDate(new Date().toISOString().slice(0, 10))}
+                </p>
+                <p style={{ fontSize: "9pt", margin: "1mm 0 0", color: "#444" }}>
+                  Confidential — contains student education records.
+                </p>
+              </div>
 
               {storeError && (
                 <div
@@ -2337,12 +2366,11 @@ function Workspace() {
           </section>
         </main>
 
-        {/* Advanced Search Modal */}
-        <AdvancedSearch
-          isOpen={showSearch}
+        <CommandPalette
+          open={showSearch}
           onClose={() => setShowSearch(false)}
           store={store}
-          onNavigate={handleSearchNavigation}
+          commands={commands}
         />
       </div>
     </div>
