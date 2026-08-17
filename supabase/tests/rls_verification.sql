@@ -31,6 +31,11 @@ CREATE TEMP TABLE rls_results (
   passed     boolean
 ) ON COMMIT DROP;
 
+-- Results are recorded while impersonating `authenticated`, so that role needs
+-- to be able to write here. This table holds test bookkeeping, not app data.
+GRANT INSERT, SELECT ON rls_results TO authenticated;
+GRANT USAGE, SELECT ON SEQUENCE rls_results_seq_seq TO authenticated;
+
 CREATE OR REPLACE FUNCTION pg_temp.record(
   p_check text, p_expected text, p_actual text
 ) RETURNS void LANGUAGE sql AS $$
@@ -97,10 +102,13 @@ DECLARE
 BEGIN
   PERFORM pg_temp.act_as(v_a);
 
+  -- RETURNING is deliberate. The SELECT policy is applied to the inserted row,
+  -- so a policy that cannot see a freshly written row fails here rather than in
+  -- production on the first `.insert().select()`.
   INSERT INTO public.students (first_name, last_name, grade_level, created_by)
   VALUES ('Sam', 'Student', '3rd Grade', v_a)
   RETURNING id INTO v_student;
-  PERFORM pg_temp.record('A can create a student', 'ok',
+  PERFORM pg_temp.record('A can create a student (INSERT ... RETURNING)', 'ok',
                          CASE WHEN v_student IS NOT NULL THEN 'ok' ELSE 'null' END);
 
   SELECT count(*) INTO v_rows FROM public.students WHERE id = v_student;

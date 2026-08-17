@@ -199,21 +199,34 @@ GRANT EXECUTE ON FUNCTION public.has_entity_access(text, uuid, boolean) TO authe
 -- 2. Drop the original (incomplete) policies so we can define them coherently
 -- ---------------------------------------------------------------------------
 
-DROP POLICY IF EXISTS "Users can view own profile"        ON public.user_profiles;
-DROP POLICY IF EXISTS "Users can update own profile"      ON public.user_profiles;
-DROP POLICY IF EXISTS "Users can view own students"       ON public.students;
-DROP POLICY IF EXISTS "Users can create students"         ON public.students;
-DROP POLICY IF EXISTS "Users can update own students"     ON public.students;
-DROP POLICY IF EXISTS "Users can view goals"              ON public.goals;
-DROP POLICY IF EXISTS "Users can create goals"            ON public.goals;
-DROP POLICY IF EXISTS "Users can update goals"            ON public.goals;
-DROP POLICY IF EXISTS "Users can view progress logs"      ON public.progress_logs;
-DROP POLICY IF EXISTS "Users can create progress logs"    ON public.progress_logs;
-DROP POLICY IF EXISTS "Users can view accommodations"     ON public.accommodations;
-DROP POLICY IF EXISTS "Users can create accommodations"   ON public.accommodations;
-DROP POLICY IF EXISTS "Users can view own AI suggestions" ON public.ai_suggestions;
-DROP POLICY IF EXISTS "Users can create AI suggestions"   ON public.ai_suggestions;
-DROP POLICY IF EXISTS "Users can view own audit logs"     ON public.audit_logs;
+-- Drops every existing policy on the tables this migration owns, rather than
+-- naming them individually.
+--
+-- Listing only the original schema's policy names made a second run fail with
+-- "policy already exists" the moment it reached a policy this migration itself
+-- created. That matters: if a first run fails partway - a typo, a lost
+-- connection, a permissions problem - you need to be able to fix it and run the
+-- file again. Clearing by table makes the migration genuinely re-runnable and
+-- leaves no orphaned policy from an earlier revision.
+DO $$
+DECLARE
+  target_tables text[] := ARRAY[
+    'user_profiles','students','team_members','goals','progress_logs',
+    'accommodations','progress_log_accommodations','evidence','present_levels',
+    'service_logs','behavior_logs','assessments','compliance_items','comments',
+    'audit_logs','ai_suggestions'
+  ];
+  r record;
+BEGIN
+  FOR r IN
+    SELECT policyname, tablename
+    FROM pg_policies
+    WHERE schemaname = 'public'
+      AND tablename = ANY(target_tables)
+  LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON public.%I', r.policyname, r.tablename);
+  END LOOP;
+END $$;
 
 -- ---------------------------------------------------------------------------
 -- 3. user_profiles
@@ -236,8 +249,24 @@ CREATE POLICY "profiles_update_self" ON public.user_profiles
 -- 4. students
 -- ---------------------------------------------------------------------------
 
+-- The creator check is written inline rather than delegated to
+-- has_student_access(id), and that is load-bearing.
+--
+-- PostgreSQL applies the SELECT policy to `INSERT ... RETURNING`. Evaluating it
+-- through the helper re-queries `students` for the row currently being
+-- inserted, and because the helper is STABLE it runs against the statement
+-- snapshot, which does not contain that row yet. The check therefore fails and
+-- the insert is rejected with "new row violates row-level security policy" -
+-- the failure that supabase-js produces for any `.insert().select()`.
+--
+-- Comparing the column directly evaluates against the NEW row, so the creator
+-- can read back what they just wrote. Team access still routes through the
+-- helper, where the row already exists and the snapshot is not a problem.
 CREATE POLICY "students_select" ON public.students
-  FOR SELECT USING (public.has_student_access(id));
+  FOR SELECT USING (
+    created_by = auth.uid()
+    OR public.has_student_access(id)
+  );
 
 CREATE POLICY "students_insert" ON public.students
   FOR INSERT WITH CHECK (auth.uid() = created_by);
