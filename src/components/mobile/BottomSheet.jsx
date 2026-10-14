@@ -104,10 +104,6 @@ const BottomSheet = React.forwardRef(({
             dragConstraints={{ top: 0, bottom: 300 }}
             dragElastic={0.2}
             onDragEnd={handleDragEnd}
-            style={{
-              y,
-              bottom: -keyboardHeight,
-            }}
             initial={{ y: "100%" }}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
@@ -122,6 +118,8 @@ const BottomSheet = React.forwardRef(({
               className
             )}
             style={{
+              y,
+              bottom: -keyboardHeight,
               height: `${height}px`,
               maxHeight: '90vh',
               touchAction: 'none',

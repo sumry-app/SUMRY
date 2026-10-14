@@ -28,5 +28,6 @@
     "react": {
       "version": "detect"
     }
-  }
+  },
+  "ignorePatterns": ["dist", "node_modules", "build", "coverage"]
 }

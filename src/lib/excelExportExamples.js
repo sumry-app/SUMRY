@@ -5,6 +5,7 @@
  * in your components throughout the SUMRY application.
  */
 
+import React from 'react';
 import {
   exportStudentRoster,
   exportGoalProgressReport,

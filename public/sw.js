@@ -1,3 +1,4 @@
+/* global clients */
 const CACHE_NAME = 'sumry-v1';
 const RUNTIME_CACHE = 'sumry-runtime-v1';
 

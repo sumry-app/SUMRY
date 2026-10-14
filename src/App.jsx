@@ -14,9 +14,8 @@ import {
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
   AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search, Sun, Moon
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search, Sun, Moon, Target, FlaskConical
 } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import {
   uid,
   createTimestamp,
@@ -25,8 +24,6 @@ import {
   exportJSON,
   exportCSV,
   parseScore,
-  calculateTrendline,
-  getProgressStatus,
   computeStoreStats
 } from "@/lib/data";
 import { cn } from "@/lib/utils";
@@ -35,12 +32,33 @@ import { EmptyState, EmptyHint } from "@/components/ui/empty-state";
 import { isSupabaseConfigured, supabaseConfigStatus } from "@/lib/supabase";
 import { useSupabaseStore } from "@/hooks/useSupabaseStore";
 import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
+import { isDemoMode, demoExitHref, useDemoAuth, useDemoStore } from "@/hooks/useDemoData";
 import { useTheme } from "@/hooks/useTheme";
 import { useToast } from "@/components/ui/Toast";
 import { formatRelativeDate, formatShortDate, formatFullDate } from "@/lib/dates";
 import { CommandPalette } from "@/components/command/CommandPalette";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { triggerNotifications } from "@/lib/notificationManager";
+import { CaseloadTriage } from "@/components/triage/CaseloadTriage";
+import { ProgressReportDialog } from "@/components/reports/ProgressReportDialog";
+import { Sparkline, StatusBadge, TrendChart, statusReason } from "@/components/progress/ProgressVisuals";
+import { QuickCapture, CaptureDock } from "@/components/capture/QuickCapture";
+import { analyzeCaseload, analyzeGoal } from "@/lib/progress/analysis";
+import {
+  coerceDirectionFallback,
+  defaultConfigFor,
+  describeMeasurement,
+  formatMeasurement,
+  formatRecorded,
+  goalDirection,
+  inferMeasurementType,
+  measurementChoices,
+  measurementMeta,
+  measurementTypeOf,
+  normalizeGoalConfig,
+  parseMeasurement,
+  roundTo,
+} from "@/lib/progress/measurement";
 
 
 // ========== SHARED COMPONENTS ==========
@@ -85,17 +103,22 @@ function OfflineIndicator() {
 }
 
 // ========== AI FEATURES ==========
-function AIGoalAssistant({ onGenerate, onClose, students }) {
+/**
+ * Fills the goal form from a small table of research-based templates.
+ *
+ * This is deliberately not called AI. An earlier version of this component was
+ * labelled "AI Goal Generator", sat behind a 1.5 second setTimeout so it looked
+ * like it was thinking, and stamped an aiGenerated flag - none of which was
+ * true. A template picker is a useful thing to have; claiming it is a model is
+ * not, and putting that claim in front of a school district is a liability.
+ */
+function GoalStarter({ onGenerate, onClose, students }) {
   const [studentId, setStudentId] = useState(students[0]?.id || "");
   const [area, setArea] = useState("Reading");
   const [studentLevel, setStudentLevel] = useState("");
   const [focusArea, setFocusArea] = useState("");
-  const [generating, setGenerating] = useState(false);
 
   const generateGoal = () => {
-    setGenerating(true);
-
-    setTimeout(() => {
       const templates = {
         Reading: {
           fluency: { desc: "Student will read grade-level text at [X] words per minute with 95% accuracy", baseline: "60 WPM", target: "120 WPM", metric: "WPM" },
@@ -132,13 +155,10 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
         description: template.desc,
         baseline: template.baseline,
         target: template.target,
-        metric: template.metric,
-        aiGenerated: true
+        metric: template.metric
       });
 
-      setGenerating(false);
       onClose();
-    }, 1500);
   };
 
   return (
@@ -147,11 +167,11 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-600/40">
-              <Sparkles className="h-6 w-6 text-white" strokeWidth={2} />
+              <FileText className="h-6 w-6 text-white" strokeWidth={2} />
             </div>
             <div>
-              <DialogTitle>AI Goal Generator</DialogTitle>
-              <p className="text-sm text-slate-500">Create measurable IEP goals instantly</p>
+              <DialogTitle>Goal starter</DialogTitle>
+              <p className="text-sm text-slate-500">Pick a research-based template, then edit it</p>
             </div>
           </div>
         </DialogHeader>
@@ -207,7 +227,9 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
             <div className="flex items-start gap-2">
               <Sparkles className="h-4 w-4 text-blue-600 mt-0.5 flex-shrink-0" strokeWidth={2} />
               <div className="text-sm text-indigo-900">
-                <strong>Pro Tip:</strong> The AI uses research-based goal templates. You can edit the generated goal before saving.
+                <strong>These are templates, not generated text.</strong> Replace the bracketed placeholders with your
+                own numbers before saving, and set the measurement type so progress entries can be charted against the
+                right scale.
               </div>
             </div>
           </div>
@@ -219,20 +241,11 @@ function AIGoalAssistant({ onGenerate, onClose, students }) {
           </Button>
           <Button
             onClick={generateGoal}
-            disabled={generating || !focusArea || !studentId}
+            disabled={!focusArea || !studentId}
             className="bg-gradient-to-r from-blue-600 to-indigo-500 hover:from-blue-700 hover:to-indigo-600 text-white shadow-lg shadow-blue-600/30"
           >
-            {generating ? (
-              <>
-                <Sparkles className="h-4 w-4 mr-2 animate-pulse" strokeWidth={2}/>
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4 mr-2" strokeWidth={2}/>
-                Generate Goal
-              </>
-            )}
+            <FileText className="h-4 w-4 mr-2" strokeWidth={2}/>
+            Use this template
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -306,9 +319,58 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
   const [description, setDescription] = useState(goal?.description || "");
   const [baseline, setBaseline] = useState(goal?.baseline || "");
   const [target, setTarget] = useState(goal?.target || "");
-  const [metric, setMetric] = useState(goal?.metric || "% correct");
   const [showTemplates, setShowTemplates] = useState(false);
-  const [showAI, setShowAI] = useState(false);
+  const [showStarter, setShowStarter] = useState(false);
+
+  // A goal written before measurement types existed is guessed from its own
+  // wording, so opening it for an edit does not quietly change what it measures.
+  const savedConfig = normalizeGoalConfig(goal?.measurementConfig);
+
+  // One unit field does two jobs: the label shown beside the goal, and the unit
+  // the analysis prints for rate and frequency goals. Keeping them as a single
+  // field is what stops the two ever disagreeing.
+  const [metric, setMetric] = useState(
+    goal?.metric || savedConfig.rateUnit || savedConfig.frequencyUnit || ""
+  );
+
+  const initialType = measurementTypeOf(
+    goal?.measurementType ||
+      inferMeasurementType({
+        targetDescription: goal?.target,
+        baselineDescription: goal?.baseline,
+        metricUnit: goal?.metric,
+      })
+  );
+
+  const [measurementType, setMeasurementType] = useState(initialType);
+  const [direction, setDirection] = useState(
+    coerceDirectionFallback(savedConfig.direction || defaultConfigFor(initialType).direction)
+  );
+  const [trialTotal, setTrialTotal] = useState(savedConfig.trialTotal ?? (initialType === "trials" ? 5 : ""));
+  const [rubricScale, setRubricScale] = useState(savedConfig.rubricScale ?? "");
+  const [startDate, setStartDate] = useState(goal?.startDate || new Date().toISOString().slice(0, 10));
+  const [targetDate, setTargetDate] = useState(goal?.targetDate || "");
+
+  const measurementConfig = normalizeGoalConfig({
+    direction,
+    trialTotal: measurementType === "trials" ? trialTotal : undefined,
+    rubricScale: measurementType === "rubric" ? rubricScale : undefined,
+    rateUnit: measurementType === "rate" ? metric : undefined,
+    frequencyUnit: measurementType === "frequency" ? metric : undefined,
+  });
+
+  // Read the baseline and target back the way the analysis will read them, so a
+  // goal that cannot be charted is caught here instead of on the caseload board.
+  const baselineCheck = parseMeasurement(baseline, measurementType, measurementConfig);
+  const targetCheck = parseMeasurement(target, measurementType, measurementConfig);
+  const canSave = Boolean(studentId && description.trim() && targetCheck.ok);
+
+  const changeType = next => {
+    const defaults = defaultConfigFor(next);
+    setMeasurementType(next);
+    setDirection(defaults.direction);
+    if (next === "trials" && !trialTotal) setTrialTotal(defaults.trialTotal ?? 5);
+  };
 
   const handleTemplateSelect = (template) => {
     if (template) {
@@ -321,12 +383,17 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
     setShowTemplates(false);
   };
 
-  const handleAIGenerate = (aiGoal) => {
-    setArea(aiGoal.area);
-    setDescription(aiGoal.description);
-    setBaseline(aiGoal.baseline);
-    setTarget(aiGoal.target);
-    setMetric(aiGoal.metric);
+  const handleStarter = (starterGoal) => {
+    setArea(starterGoal.area);
+    setDescription(starterGoal.description);
+    setBaseline(starterGoal.baseline);
+    setTarget(starterGoal.target);
+    setMetric(starterGoal.metric);
+    changeType(inferMeasurementType({
+      targetDescription: starterGoal.target,
+      baselineDescription: starterGoal.baseline,
+      metricUnit: starterGoal.metric,
+    }));
   };
 
   return (
@@ -339,8 +406,8 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
           <div className="space-y-4">
             {!goal && (
               <div className="flex gap-2">
-                <Button variant="outline" onClick={() => setShowAI(true)} className="flex-1 border-blue-200/60 text-blue-600 hover:bg-blue-50">
-                  <Sparkles className="h-4 w-4 mr-2" strokeWidth={2}/>AI Assistant
+                <Button variant="outline" onClick={() => setShowStarter(true)} className="flex-1">
+                  <FileText className="h-4 w-4 mr-2" strokeWidth={2}/>Goal starter
                 </Button>
                 <Button variant="outline" onClick={() => setShowTemplates(true)} className="flex-1">
                   <FileText className="h-4 w-4 mr-2" strokeWidth={2}/>Templates
@@ -361,30 +428,141 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
                 )}
               </SelectContent>
             </Select>
-            <Textarea placeholder="Goal description (be specific and measurable)" value={description} onChange={e => setDescription(e.target.value)} rows={3} className="bg-white/80 backdrop-blur-xl border-black/5" />
-            <div className="grid grid-cols-3 gap-2">
-              <Input placeholder="Baseline" value={baseline} onChange={e => setBaseline(e.target.value)} className="bg-white/80 backdrop-blur-xl border-black/5" />
-              <Input placeholder="Target" value={target} onChange={e => setTarget(e.target.value)} className="bg-white/80 backdrop-blur-xl border-black/5" />
-              <Input placeholder="Metric" value={metric} onChange={e => setMetric(e.target.value)} className="bg-white/80 backdrop-blur-xl border-black/5" />
+            <div className="space-y-1.5">
+              <Label>What this goal measures</Label>
+              <Select value={measurementType} onValueChange={changeType}>
+                <SelectTrigger className="bg-white/80 backdrop-blur-xl border-black/5"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {measurementChoices().map(choice => (
+                    <SelectItem key={choice.value} value={choice.value}>{choice.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                {measurementMeta(measurementType).hint}
+              </p>
             </div>
+
+            {measurementType !== "level" && (
+              <div className="space-y-1.5">
+                <Label>Which direction is progress?</Label>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant={direction === "increase" ? "default" : "outline"}
+                    onClick={() => setDirection("increase")} className="flex-1">
+                    Higher is better
+                  </Button>
+                  <Button type="button" size="sm" variant={direction === "decrease" ? "default" : "outline"}
+                    onClick={() => setDirection("decrease")} className="flex-1">
+                    Lower is better
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {measurementType === "trials" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="goal-trial-total">Trials run per probe</Label>
+                <Input id="goal-trial-total" type="number" min="1" value={trialTotal}
+                  onChange={e => setTrialTotal(e.target.value)}
+                  className="bg-white/80 backdrop-blur-xl border-black/5" />
+              </div>
+            )}
+
+            {measurementType === "rubric" && (
+              <div className="space-y-1.5">
+                <Label htmlFor="goal-rubric-scale">Top of the rubric scale</Label>
+                <Input id="goal-rubric-scale" type="number" min="1" placeholder="e.g. 4" value={rubricScale}
+                  onChange={e => setRubricScale(e.target.value)}
+                  className="bg-white/80 backdrop-blur-xl border-black/5" />
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="goal-description">Goal description (be specific and measurable)</Label>
+              <Textarea id="goal-description"
+                placeholder="e.g. Given a 2-minute timed reading, Maya will read 90 words correct per minute with 95% accuracy."
+                value={description} onChange={e => setDescription(e.target.value)} rows={3}
+                className="bg-white/80 backdrop-blur-xl border-black/5" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="goal-baseline">Baseline</Label>
+                <Input id="goal-baseline" placeholder={measurementMeta(measurementType).placeholder} value={baseline}
+                  onChange={e => setBaseline(e.target.value)}
+                  className="bg-white/80 backdrop-blur-xl border-black/5" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="goal-target">Target</Label>
+                <Input id="goal-target" placeholder={measurementMeta(measurementType).placeholder} value={target}
+                  onChange={e => setTarget(e.target.value)}
+                  className="bg-white/80 backdrop-blur-xl border-black/5" />
+              </div>
+            </div>
+
+            {(baseline.trim() || target.trim()) && (
+              <div className={cn(
+                "rounded-xl border px-3.5 py-3 text-xs leading-relaxed",
+                targetCheck.ok ? "border-info/25 bg-info-soft text-info" : "border-destructive/25 bg-destructive-soft text-destructive"
+              )}>
+                {targetCheck.ok ? (
+                  <>
+                    Read as baseline <strong>{baselineCheck.ok ? baselineCheck.display : "not set"}</strong> moving
+                    to target <strong>{targetCheck.display}</strong>. This is the scale every progress entry for this
+                    goal will be plotted on.
+                  </>
+                ) : (
+                  <>
+                    {targetCheck.error} {measurementMeta(measurementType).hint}
+                  </>
+                )}
+              </div>
+            )}
+
+            <div className="space-y-1.5">
+              <Label htmlFor="goal-metric">Unit label (optional)</Label>
+              <Input id="goal-metric" placeholder="e.g. words per minute" value={metric}
+                onChange={e => setMetric(e.target.value)}
+                className="bg-white/80 backdrop-blur-xl border-black/5" />
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="goal-start">Goal starts</Label>
+                <Input id="goal-start" type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+                  className="bg-white/80 backdrop-blur-xl border-black/5" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="goal-end">Annual review / end date</Label>
+                <Input id="goal-end" type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)}
+                  className="bg-white/80 backdrop-blur-xl border-black/5" />
+              </div>
+            </div>
+
+            {!targetDate && (
+              <p className="text-xs leading-relaxed text-muted-foreground">
+                Without an end date the aim line assumes the annual review one year after the goal start date, and every
+                report says that is what it assumed.
+              </p>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={onClose}>Cancel</Button>
-            <Button onClick={() => {
-              const trimmedDescription = description.trim();
-              const trimmedBaseline = baseline.trim();
-              const trimmedTarget = target.trim();
-              const trimmedMetric = metric.trim();
-              if (!studentId || !trimmedDescription) return;
+            <Button disabled={!canSave} onClick={() => {
+              if (!canSave) return;
               onSave({
                 ...goal,
                 id: goal?.id || uid(),
                 studentId,
                 area,
-                description: trimmedDescription,
-                baseline: trimmedBaseline,
-                target: trimmedTarget,
-                metric: trimmedMetric
+                description: description.trim(),
+                baseline: baseline.trim(),
+                target: target.trim(),
+                metric: metric.trim(),
+                measurementType,
+                measurementConfig,
+                startDate,
+                targetDate
               });
               onClose();
             }}>Save Goal</Button>
@@ -393,39 +571,21 @@ function EditGoalDialog({ goal, students, onSave, onClose }) {
       </Dialog>
 
       {showTemplates && <GoalTemplates onSelectTemplate={handleTemplateSelect} />}
-      {showAI && <AIGoalAssistant students={students} onGenerate={handleAIGenerate} onClose={() => setShowAI(false)} />}
+      {showStarter && <GoalStarter students={students} onGenerate={handleStarter} onClose={() => setShowStarter(false)} />}
     </>
   );
 }
 
-function GoalDetailDialog({ goal, student, logs, onClose }) {
+function GoalDetailDialog({ goal, student, logs, onClose, onOpenReport }) {
   const toast = useToast();
   const sortedLogs = useMemo(() =>
     [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     [logs]
   );
 
-  const chartData = useMemo(() =>
-    sortedLogs.map(l => ({
-      date: l.dateISO,
-      score: parseScore(l.score),
-      label: l.dateISO.slice(5)
-    })).filter(d => d.score !== null),
-    [sortedLogs]
-  );
-
-  const baseline = parseScore(goal.baseline);
-  const target = parseScore(goal.target);
-  const trendline = calculateTrendline(sortedLogs);
-  const status = getProgressStatus(logs, goal.baseline, goal.target);
-
-  const trendlineData = useMemo(() => {
-    if (!trendline || chartData.length === 0) return [];
-    return chartData.map((d, i) => ({
-      ...d,
-      trend: trendline.slope * i + trendline.intercept
-    }));
-  }, [trendline, chartData]);
+  // The same analysis the caseload board and the printable report use, so one
+  // goal can never show two different verdicts in two places.
+  const analysis = useMemo(() => analyzeGoal({ goal, logs }), [goal, logs]);
 
   const generateProgressReport = () => {
     const recent = sortedLogs.slice(-3);
@@ -435,9 +595,9 @@ function GoalDetailDialog({ goal, student, logs, onClose }) {
     report += `Goal: ${goal.description}\n`;
     report += `Area: ${goal.area}\n`;
     report += `Baseline: ${goal.baseline} | Target: ${goal.target}\n\n`;
-    report += `Data Points: ${logs.length}\n`;
+    report += `Data Points: ${analysis.dataPoints}\n`;
     report += `Recent Average: ${avgRecent.toFixed(1)}\n`;
-    report += `Status: ${status.label}\n\n`;
+    report += `Status: ${analysis.statusLabel}\n\n`;
     report += `Recent Progress:\n`;
     recent.forEach(l => {
       report += `- ${l.dateISO}: ${l.score} ${goal.metric}\n`;
@@ -463,65 +623,55 @@ function GoalDetailDialog({ goal, student, logs, onClose }) {
           <div>
             <div className="flex items-center gap-2 mb-2 flex-wrap">
               <Badge variant="outline" className="border-slate-200">{goal.area}</Badge>
+              <Badge variant="secondary">{describeMeasurement(goal)}</Badge>
               <span className="text-sm text-slate-600">{student?.name}</span>
-              <Badge
-                variant={status.color === 'green' ? 'default' : status.color === 'red' ? 'destructive' : 'secondary'}
-                className="ml-auto"
-              >
-                {status.color === 'green' && <CheckCircle className="h-3 w-3 mr-1" strokeWidth={2}/>}
-                {status.color === 'red' && <AlertTriangle className="h-3 w-3 mr-1" strokeWidth={2}/>}
-                {status.label}
-              </Badge>
+              <StatusBadge status={analysis.status} className="ml-auto" />
             </div>
             <p className="font-medium text-slate-900">{goal.description}</p>
-            <div className="flex gap-4 mt-2 text-sm text-slate-600">
-              <span>Baseline: {goal.baseline || "—"}</span>
-              <span>Target: {goal.target || "—"}</span>
-              <span>{goal.metric}</span>
-              <span className="ml-auto font-medium">{logs.length} data points</span>
+            <div className="flex flex-wrap gap-4 mt-2 text-sm text-slate-600">
+              <span>Baseline: {analysis.baselineText || "—"}</span>
+              <span>Target: {analysis.targetText || "—"}</span>
+              <span>Ends {analysis.targetDate}{analysis.deadlineAssumed ? " (assumed annual review)" : ""}</span>
+              <span className="ml-auto font-medium">{analysis.dataPoints} data points</span>
             </div>
+
+            <p className="mt-4 rounded-xl border bg-muted/30 px-3.5 py-3 text-sm leading-relaxed">
+              {analysis.explanation}
+            </p>
+            {analysis.threeBelowAimLine && (
+              <p className="mt-2 text-sm font-medium text-destructive">
+                Decision rule met: three consecutive checks have fallen below the aim line.
+              </p>
+            )}
           </div>
 
-          {logs.length < 7 && (
-            <div className="flex items-start gap-3 p-4 bg-blue-50 border border-blue-200/60 rounded-xl">
-              <AlertTriangle className="h-5 w-5 text-indigo-500 mt-0.5 flex-shrink-0" strokeWidth={2} />
-              <div>
-                <div className="font-medium text-slate-900 text-sm">Need more data for statistical validity</div>
-                <div className="text-slate-600 text-sm">Collect {7 - logs.length} more data points for reliable trends (7-12 recommended)</div>
-              </div>
-            </div>
-          )}
-
-          {chartData.length > 0 && (
+          {analysis.dataPoints >= 2 && (
             <Card className="bg-white/80 backdrop-blur-xl border-black/5">
               <CardContent className="p-6">
-                <h4 className="text-sm font-semibold text-slate-900 mb-4">Progress Chart with Trend Analysis</h4>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={trendlineData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                    <XAxis dataKey="label" stroke="#64748b" style={{ fontSize: '12px' }} />
-                    <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'white',
-                        border: '1px solid #e2e8f0',
-                        borderRadius: '8px',
-                        fontSize: '12px'
-                      }}
-                    />
-                    <Line type="monotone" dataKey="score" stroke="#3b82f6" strokeWidth={3} dot={{ r: 5, fill: '#3b82f6' }} name="Actual Score" />
-                    {trendline && <Line type="monotone" dataKey="trend" stroke="#94a3b8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Trend" />}
-                    {baseline !== null && <ReferenceLine y={baseline} stroke="#94a3b8" strokeDasharray="3 3" label={{ value: 'Baseline', position: 'left', style: { fontSize: '11px' } }} />}
-                    {target !== null && <ReferenceLine y={target} stroke="#22c55e" strokeDasharray="3 3" label={{ value: 'Target', position: 'left', style: { fontSize: '11px' } }} />}
-                  </LineChart>
-                </ResponsiveContainer>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-semibold text-slate-900">Progress against the aim line</h4>
+                  <span className="text-xs text-slate-500">
+                    {analysis.dataPoints} observations · {analysis.confidence} confidence
+                  </span>
+                </div>
+                <TrendChart analysis={analysis} height={300} />
               </CardContent>
             </Card>
           )}
 
+          <div className="flex flex-wrap items-center gap-4 rounded-xl border bg-muted/30 px-3.5 py-3 text-sm">
+            <span>
+              <span className="text-slate-500">Next step: </span>
+              {analysis.nextAction}
+            </span>
+          </div>
+
           <div className="flex gap-2 flex-wrap">
+            <Button onClick={() => onOpenReport?.(student?.id)}>
+              <FileText className="h-4 w-4 mr-2" strokeWidth={2}/>Progress report
+            </Button>
             <Button variant="outline" onClick={generateProgressReport} className="border-slate-200">
-              <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Generate Report
+              <Download className="h-4 w-4 mr-2" strokeWidth={2}/>Download summary (.txt)
             </Button>
             <Button variant="outline" onClick={() => {
               const url = `${window.location.origin}?share=${goal.id}`;
@@ -538,13 +688,17 @@ function GoalDetailDialog({ goal, student, logs, onClose }) {
               <div className="space-y-3 max-h-64 overflow-y-auto">
                 {sortedLogs.map(log => (
                   <div key={log.id} className="p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <div className="flex justify-between mb-2">
+                    <div className="flex justify-between gap-3 mb-2">
                       <span className="text-sm font-medium" title={formatFullDate(log.dateISO)}>
                         {formatShortDate(log.dateISO)}
                       </span>
-                      <span className="text-sm text-slate-600">Score: {log.score || "—"}</span>
+                      <span className="text-sm text-slate-600">{formatRecorded(log, goal) || "—"}</span>
                     </div>
+                    {log.context && <p className="text-xs text-slate-500 mb-1">{log.context}</p>}
                     {log.notes && <p className="text-sm text-slate-600 mb-1">{log.notes}</p>}
+                    {log.evidenceNote && (
+                      <p className="text-xs text-slate-600 mb-1">Evidence: {log.evidenceNote}</p>
+                    )}
                     {log.accommodationsUsed?.length > 0 && (
                       <div className="text-xs text-slate-500">
                         Accommodations: {log.accommodationsUsed.join(", ")}
@@ -569,12 +723,19 @@ function GoalDetailDialog({ goal, student, logs, onClose }) {
   );
 }
 
-function GoalsView({ store, setStore }) {
+function GoalsView({ store, setStore, onOpenReport, initialGoalId }) {
   const [studentFilter, setStudentFilter] = useState("all");
   const [areaFilter, setAreaFilter] = useState("all");
   const [editDialog, setEditDialog] = useState(null);
   const [detailsDialog, setDetailsDialog] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
+
+  // Arriving here from the caseload board with a goal already chosen.
+  useEffect(() => {
+    if (!initialGoalId) return;
+    const goal = store.goals.find(g => g.id === initialGoalId);
+    if (goal) setDetailsDialog(goal);
+  }, [initialGoalId, store.goals]);
 
   const studentLookup = useMemo(() => {
     const map = new Map();
@@ -715,21 +876,12 @@ function GoalsView({ store, setStore }) {
           {filtered.map((g, i) => {
             const logs = store.logs.filter(l => l.goalId === g.id);
             const student = store.students.find(s => s.id === g.studentId);
-            const status = getProgressStatus(logs, g.baseline, g.target);
-
-            const sorted = [...logs].sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-            const latest = sorted[sorted.length - 1];
-            const base = parseScore(g.baseline);
-            const targ = parseScore(g.target);
-            const curr = latest ? parseScore(latest.score) : null;
-            let pct = null;
-            if (curr !== null && base !== null && targ !== null && targ !== base) {
-              pct = Math.max(0, Math.min(100, ((curr - base) / (targ - base)) * 100));
-            }
+            const analysis = analyzeGoal({ goal: g, logs });
+            const pct = analysis.ratio === null ? null : Math.max(0, Math.min(100, analysis.ratio * 100));
 
             const tone =
-              status.status === "on-track" ? "success"
-              : status.status === "off-track" ? "warning"
+              analysis.tone === "green" ? "success"
+              : analysis.tone === "red" || analysis.tone === "amber" ? "warning"
               : "primary";
 
             return (
@@ -742,31 +894,25 @@ function GoalsView({ store, setStore }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <Badge variant="secondary">{g.area}</Badge>
                       <span className="text-sm font-semibold">{student?.name}</span>
-                      <Badge
-                        variant={
-                          status.status === "on-track" ? "success"
-                          : status.status === "off-track" ? "warning"
-                          : "outline"
-                        }
-                      >
-                        {status.status === "on-track" && <CheckCircle strokeWidth={2.4} />}
-                        {status.status === "off-track" && <AlertTriangle strokeWidth={2.4} />}
-                        {status.label}
-                      </Badge>
+                      <StatusBadge status={analysis.status} />
                     </div>
 
                     <p className="mt-2.5 text-sm font-medium leading-relaxed">{g.description}</p>
 
                     <div className="mt-3.5 flex flex-wrap items-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
                       <span>
-                        Baseline <span className="font-semibold tabular text-foreground">{g.baseline || "—"}</span>
+                        Baseline <span className="font-semibold tabular text-foreground">{analysis.baselineText || "—"}</span>
                         {" → "}
-                        Target <span className="font-semibold tabular text-foreground">{g.target || "—"}</span>
-                        {g.metric && <span className="ml-1">{g.metric}</span>}
+                        Target <span className="font-semibold tabular text-foreground">{analysis.targetText || "—"}</span>
+                        <span className="ml-1">{describeMeasurement(g)}</span>
                       </span>
                       <span>
-                        {logs.length} {logs.length === 1 ? "entry" : "entries"}
-                        {latest && <span className="ml-1">· latest {latest.score}</span>}
+                        {analysis.dataPoints} {analysis.dataPoints === 1 ? "entry" : "entries"}
+                        {analysis.latest && (
+                          <span className="ml-1">
+                            · latest {formatMeasurement(analysis.latest.value, analysis.type, analysis.config)}
+                          </span>
+                        )}
                       </span>
                     </div>
 
@@ -813,6 +959,7 @@ function GoalsView({ store, setStore }) {
           student={store.students.find(s => s.id === detailsDialog.studentId)}
           logs={store.logs.filter(l => l.goalId === detailsDialog.id)}
           onClose={() => setDetailsDialog(null)}
+          onOpenReport={onOpenReport}
         />
       )}
     </div>
@@ -820,12 +967,32 @@ function GoalsView({ store, setStore }) {
 }
 
 // ========== PROGRESS LOGS ==========
-function ProgressView({ store, setStore }) {
+function ProgressView({ store, setStore, initialGoalId }) {
   const toast = useToast();
-  const [goalFilter, setGoalFilter] = useState("all");
+  const [goalFilter, setGoalFilter] = useState(initialGoalId || "all");
   const [dateISO, setDateISO] = useState(new Date().toISOString().slice(0, 10));
   const [score, setScore] = useState("");
   const [notes, setNotes] = useState("");
+  const [settingContext, setSettingContext] = useState("");
+  const [evidenceNote, setEvidenceNote] = useState("");
+  const [accommodations, setAccommodations] = useState("");
+
+  // Arriving here from the caseload board, a goal is already chosen.
+  useEffect(() => {
+    if (initialGoalId) setGoalFilter(initialGoalId);
+  }, [initialGoalId]);
+
+  const selectedGoal = useMemo(
+    () => (goalFilter === "all" ? null : store.goals.find(g => g.id === goalFilter) ?? null),
+    [goalFilter, store.goals]
+  );
+  const selectedType = measurementTypeOf(selectedGoal?.measurementType);
+  const selectedMeta = measurementMeta(selectedType);
+
+  // What the typed value will become once it is on the goal's own scale. Shown
+  // before saving, because "4 of 5" silently becoming 4 is exactly the bug that
+  // made the old progress data unusable.
+  const entry = selectedGoal ? parseMeasurement(score, selectedType, selectedGoal.measurementConfig) : null;
 
   const filteredGoals = goalFilter === "all" ? store.goals : store.goals.filter(g => g.id === goalFilter);
   const goalLookup = useMemo(() => new Map(store.goals.map(goal => [goal.id, goal])), [store.goals]);
@@ -840,7 +1007,7 @@ function ProgressView({ store, setStore }) {
       return;
     }
 
-    const header = ["Date", "Student", "Goal", "Area", "Score", "Metric", "Notes", "Accommodations"];
+    const header = ["Date", "Student", "Goal", "Area", "Recorded", "Canonical score", "Measurement", "Setting", "Evidence", "Notes", "Accommodations"];
     const rows = logsForExport.map(log => {
       const goal = goalLookup.get(log.goalId);
       const student = goal ? studentLookup.get(goal.studentId) : undefined;
@@ -849,8 +1016,11 @@ function ProgressView({ store, setStore }) {
         student?.name || "",
         goal?.description || "",
         goal?.area || "",
+        formatRecorded(log, goal),
         log.score,
-        goal?.metric || "",
+        goal ? describeMeasurement(goal) : "",
+        log.context || "",
+        log.evidenceNote || "",
         log.notes || "",
         (log.accommodationsUsed || []).join("; ")
       ];
@@ -860,19 +1030,29 @@ function ProgressView({ store, setStore }) {
   }, [goalFilter, goalLookup, logsForExport, studentLookup]);
 
   const handleAddLog = () => {
-    const trimmedScore = score.trim();
-    if (goalFilter === "all" || !trimmedScore) return;
+    if (!selectedGoal || !entry?.ok) return;
 
-    const goal = store.goals.find(g => g.id === goalFilter);
-    const student = goal ? store.students.find(s => s.id === goal.studentId) : null;
+    const goal = selectedGoal;
+    const student = store.students.find(s => s.id === goal.studentId);
+    const usedAccommodations = accommodations
+      .split(",")
+      .map(item => item.trim())
+      .filter(Boolean);
 
     const newLog = {
       id: uid(),
-      goalId: goalFilter,
+      goalId: goal.id,
       dateISO,
-      score: trimmedScore,
+      // The canonical value on the goal's own scale. For a trials goal that is
+      // percent correct, because 4 of 5 and 7 of 10 cannot be compared as raw
+      // counts - which is the mistake this column used to make.
+      score: String(roundTo(entry.score, 4)),
+      rawValue: score.trim(),
+      measurementType: goal.measurementType,
+      context: settingContext.trim(),
+      evidenceNote: evidenceNote.trim(),
       notes: notes.trim(),
-      accommodationsUsed: []
+      accommodationsUsed: usedAccommodations
     };
 
     setStore(prev => ({
@@ -883,21 +1063,28 @@ function ProgressView({ store, setStore }) {
 
     // Trigger notifications
     if (student && goal) {
-      triggerNotifications.progressLogAdded(student.name, goal.area, trimmedScore);
+      triggerNotifications.progressLogAdded(student.name, goal.area, entry.display);
 
-      // Check for achievement (target reached)
-      const scoreNum = parseScore(trimmedScore);
-      const targetNum = parseScore(goal.target);
-      if (scoreNum !== null && targetNum !== null && scoreNum >= targetNum) {
+      // Check for achievement (target reached), against the goal's own scale
+      // rather than the typed text, so "4 of 5" is compared to "4 of 5".
+      const targetCheck = parseMeasurement(goal.target, selectedType, goal.measurementConfig);
+      const reached =
+        targetCheck.ok &&
+        (goalDirection(goal) === "decrease" ? entry.score <= targetCheck.score : entry.score >= targetCheck.score);
+
+      if (reached) {
         triggerNotifications.achievementUnlocked(
           student.name,
-          `reached the target for ${goal.area} with a score of ${trimmedScore}!`
+          `reached the target for ${goal.area} with ${entry.display}!`
         );
       }
     }
 
     setScore("");
     setNotes("");
+    setSettingContext("");
+    setEvidenceNote("");
+    setAccommodations("");
   };
 
   return (
@@ -950,13 +1137,57 @@ function ProgressView({ store, setStore }) {
                   <Input id="log-date" type="date" value={dateISO} onChange={e => setDateISO(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="log-score">Score</Label>
+                  <Label htmlFor="log-score">{selectedMeta.label}</Label>
                   <Input
                     id="log-score"
-                    placeholder="e.g. 72"
+                    placeholder={selectedMeta.placeholder}
                     value={score}
                     onChange={e => setScore(e.target.value)}
-                    inputMode="decimal"
+                    inputMode={selectedType === "trials" ? "text" : "decimal"}
+                  />
+                  {score.trim() ? (
+                    entry?.ok ? (
+                      <p className="text-xs text-muted-foreground">
+                        Recorded as <strong>{entry.display}</strong>
+                      </p>
+                    ) : (
+                      <p className="text-xs text-destructive">{entry?.error}</p>
+                    )
+                  ) : (
+                    <p className="text-xs leading-relaxed text-muted-foreground">{selectedMeta.hint}</p>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="log-context">
+                    Setting and conditions <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    id="log-context"
+                    placeholder="e.g. small group, verbal prompts, after lunch"
+                    value={settingContext}
+                    onChange={e => setSettingContext(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="log-evidence">
+                    Evidence <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    id="log-evidence"
+                    placeholder="e.g. running record, probe sheet 12, work sample"
+                    value={evidenceNote}
+                    onChange={e => setEvidenceNote(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="log-accommodations">
+                    Accommodations used <span className="font-normal text-muted-foreground">(optional)</span>
+                  </Label>
+                  <Input
+                    id="log-accommodations"
+                    placeholder="Comma separated, e.g. extended time, read aloud"
+                    value={accommodations}
+                    onChange={e => setAccommodations(e.target.value)}
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -968,10 +1199,10 @@ function ProgressView({ store, setStore }) {
                     placeholder="What supported this session?"
                     value={notes}
                     onChange={e => setNotes(e.target.value)}
-                    rows={3}
+                    rows={2}
                   />
                 </div>
-                <Button onClick={handleAddLog} className="w-full" size="lg" disabled={!score.trim()}>
+                <Button onClick={handleAddLog} className="w-full" size="lg" disabled={!entry?.ok}>
                   <Plus strokeWidth={2.4} />
                   Save entry
                 </Button>
@@ -995,7 +1226,13 @@ function ProgressView({ store, setStore }) {
               .filter(l => l.goalId === goal.id)
               .sort((a, b) => b.dateISO.localeCompare(a.dateISO));
             const student = store.students.find(s => s.id === goal.studentId);
-            const targ = parseScore(goal.target);
+            const analysis = analyzeGoal({ goal, logs });
+            const goalTarget = parseMeasurement(
+              goal.target,
+              measurementTypeOf(goal.measurementType),
+              goal.measurementConfig
+            );
+            const goalGoesDown = goalDirection(goal) === "decrease";
 
             return (
               <div
@@ -1010,9 +1247,10 @@ function ProgressView({ store, setStore }) {
                     </div>
                     <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{goal.description}</p>
                   </div>
-                  <Badge variant={logs.length ? "default" : "outline"} className="shrink-0">
-                    {logs.length} {logs.length === 1 ? "entry" : "entries"}
-                  </Badge>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <Sparkline analysis={analysis} className="hidden sm:block" />
+                    <StatusBadge status={analysis.status} />
+                  </div>
                 </div>
 
                 {logs.length === 0 ? (
@@ -1022,8 +1260,15 @@ function ProgressView({ store, setStore }) {
                 ) : (
                   <ul className="mt-4 space-y-0.5 border-t pt-3">
                     {logs.slice(0, 5).map(log => {
-                      const val = parseScore(log.score);
-                      const met = val !== null && targ !== null && val >= targ;
+                      const measured = parseMeasurement(
+                        log.rawValue ?? log.score,
+                        measurementTypeOf(log.measurementType || goal.measurementType),
+                        goal.measurementConfig
+                      );
+                      const met =
+                        goalTarget.ok &&
+                        measured.ok &&
+                        (goalGoesDown ? measured.score <= goalTarget.score : measured.score >= goalTarget.score);
                       return (
                         <li
                           key={log.id}
@@ -1042,8 +1287,7 @@ function ProgressView({ store, setStore }) {
                           </div>
                           <span className="flex shrink-0 items-center gap-1.5 font-semibold tabular">
                             {met && <CheckCircle className="size-3.5 text-success" strokeWidth={2.4} />}
-                            {log.score}
-                            <span className="text-xs font-normal text-muted-foreground">{goal.metric}</span>
+                            {formatRecorded(log, goal)}
                           </span>
                         </li>
                       );
@@ -1065,7 +1309,7 @@ function ProgressView({ store, setStore }) {
 }
 
 // ========== STUDENTS VIEW ==========
-function StudentsView({ store, setStore }) {
+function StudentsView({ store, setStore, onOpenReport }) {
   const toast = useToast();
   const [editDialog, setEditDialog] = useState(null);
   const [name, setName] = useState("");
@@ -1201,7 +1445,7 @@ function StudentsView({ store, setStore }) {
             const logCount = store.logs.filter(l => goalIds.has(l.goalId)).length;
             const onTrack = studentGoals.filter(g => {
               const logs = store.logs.filter(l => l.goalId === g.id);
-              return getProgressStatus(logs, g.baseline, g.target).status === "on-track";
+              return analyzeGoal({ goal: g, logs }).status === "on-track";
             }).length;
 
             return (
@@ -1248,7 +1492,15 @@ function StudentsView({ store, setStore }) {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-center gap-1 border-t pt-3">
+                <div className="mt-4 flex flex-wrap items-center gap-1 border-t pt-3">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onOpenReport?.(student.id)}
+                  >
+                    <FileText strokeWidth={2} />
+                    Progress report
+                  </Button>
                   <Button
                     size="sm"
                     variant="ghost"
@@ -1325,7 +1577,7 @@ function StudentsView({ store, setStore }) {
 }
 
 // ========== DASHBOARD ==========
-function Dashboard({ store, stats: statsOverride }) {
+function Dashboard({ store, stats: statsOverride, onOpenReport }) {
   const stats = useMemo(
     () => statsOverride ?? computeStoreStats(store),
     [statsOverride, store]
@@ -1379,28 +1631,15 @@ function Dashboard({ store, stats: statsOverride }) {
         const logs = store.logs
           .filter(l => l.goalId === goal.id)
           .sort((a, b) => a.dateISO.localeCompare(b.dateISO));
-        const latest = logs[logs.length - 1];
-        const base = parseScore(goal.baseline);
-        const targ = parseScore(goal.target);
-        const curr = latest ? parseScore(latest.score) : null;
-
-        // Percentage of the baseline-to-target journey covered so far.
-        let pct = null;
-        if (curr !== null && base !== null && targ !== null && targ !== base) {
-          pct = Math.max(0, Math.min(100, ((curr - base) / (targ - base)) * 100));
-        }
-
-        const daysSince = latest
-          ? Math.floor((Date.now() - Date.parse(latest.dateISO)) / 86400000)
-          : null;
+        const analysis = analyzeGoal({ goal, logs });
 
         return {
           goal,
           logs,
-          latest,
-          pct,
-          daysSince,
-          status: getProgressStatus(logs, goal.baseline, goal.target),
+          analysis,
+          // Share of the baseline-to-target distance covered so far, which the
+          // analysis already knows how to work out in either direction.
+          pct: analysis.ratio === null ? null : Math.max(0, Math.min(100, analysis.ratio * 100)),
         };
       });
 
@@ -1408,23 +1647,19 @@ function Dashboard({ store, stats: statsOverride }) {
     });
   }, [store.students, store.goals, store.logs]);
 
-  // Goals that have gone quiet, or never started. This is the list a teacher
-  // actually needs on a Monday morning.
+  // Goals that have gone quiet, or are falling behind the aim line. This is the
+  // list a teacher actually needs on a Monday morning, and it is the same
+  // ranking the caseload board shows so the two cannot disagree.
   const needsAttention = useMemo(() => {
-    const out = [];
-    roster.forEach(({ student, goalRows }) => {
-      goalRows.forEach(row => {
-        if (row.daysSince === null) {
-          out.push({ student, ...row, reason: "No data logged yet" });
-        } else if (row.daysSince >= 14) {
-          out.push({ student, ...row, reason: `${row.daysSince} days since last entry` });
-        } else if (row.status.status === "off-track") {
-          out.push({ student, ...row, reason: "Trending below target" });
-        }
-      });
-    });
-    return out.slice(0, 5);
-  }, [roster]);
+    const caseload = analyzeCaseload({ students: store.students, goals: store.goals, logs: store.logs });
+    return caseload.ranked
+      .filter(analysis => analysis.priority >= 3)
+      .slice(0, 5)
+      .map(analysis => ({
+        analysis,
+        student: store.students.find(s => s.id === analysis.studentId),
+      }));
+  }, [store.students, store.goals, store.logs]);
 
   const recentLogs = useMemo(() => {
     return [...store.logs]
@@ -1494,9 +1729,17 @@ function Dashboard({ store, stats: statsOverride }) {
                   </p>
                 </div>
               </div>
-              <Badge variant={goalRows.length ? "default" : "outline"}>
-                {goalRows.length} {goalRows.length === 1 ? "goal" : "goals"}
-              </Badge>
+              <div className="flex shrink-0 items-center gap-2">
+                <Badge variant={goalRows.length ? "default" : "outline"}>
+                  {goalRows.length} {goalRows.length === 1 ? "goal" : "goals"}
+                </Badge>
+                {goalRows.length > 0 && (
+                  <Button size="sm" variant="outline" onClick={() => onOpenReport?.(student.id)}>
+                    <FileText strokeWidth={2.2} />
+                    Report
+                  </Button>
+                )}
+              </div>
             </div>
 
             {goalRows.length === 0 ? (
@@ -1505,7 +1748,7 @@ function Dashboard({ store, stats: statsOverride }) {
               </EmptyHint>
             ) : (
               <div className="mt-5 space-y-4">
-                {goalRows.map(({ goal, pct, latest, status }) => (
+                {goalRows.map(({ goal, pct, analysis }) => (
                   <div key={goal.id}>
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex min-w-0 items-center gap-2">
@@ -1513,9 +1756,11 @@ function Dashboard({ store, stats: statsOverride }) {
                         <span className="truncate text-sm text-muted-foreground">{goal.description}</span>
                       </div>
                       <span className="shrink-0 text-sm font-semibold tabular">
-                        {latest ? `${latest.score}` : "—"}
+                        {analysis.latest
+                          ? formatMeasurement(analysis.latest.value, analysis.type, analysis.config)
+                          : "—"}
                         <span className="ml-1 text-xs font-normal text-muted-foreground">
-                          / {goal.target} {goal.metric}
+                          / {analysis.targetText || "—"}
                         </span>
                       </span>
                     </div>
@@ -1523,8 +1768,8 @@ function Dashboard({ store, stats: statsOverride }) {
                       <Progress
                         value={pct ?? 0}
                         tone={
-                          status.status === "on-track" ? "success"
-                          : status.status === "off-track" ? "warning"
+                          analysis.tone === "green" ? "success"
+                          : analysis.tone === "amber" || analysis.tone === "red" ? "warning"
                           : "primary"
                         }
                         label={`${goal.area} progress`}
@@ -1534,6 +1779,9 @@ function Dashboard({ store, stats: statsOverride }) {
                         {pct === null ? "—" : `${Math.round(pct)}%`}
                       </span>
                     </div>
+                    <p className="mt-1.5 text-xs text-muted-foreground">
+                      {statusReason(analysis) || analysis.statusLabel}
+                    </p>
                   </div>
                 ))}
               </div>
@@ -1557,10 +1805,17 @@ function Dashboard({ store, stats: statsOverride }) {
             </div>
           ) : (
             <ul className="mt-4 space-y-2.5">
-              {needsAttention.map((item, idx) => (
-                <li key={`${item.goal.id}-${idx}`} className="rounded-xl border bg-muted/30 p-3">
-                  <p className="text-sm font-semibold leading-tight">{item.student.name}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{item.goal.area} · {item.reason}</p>
+              {needsAttention.map(({ analysis, student }) => (
+                <li key={analysis.goalId} className="rounded-xl border bg-muted/30 p-3">
+                  <div className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold leading-tight">{student?.name ?? "Unknown"}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        {analysis.area} · {statusReason(analysis) || analysis.statusLabel}
+                      </p>
+                    </div>
+                    <StatusBadge status={analysis.status} className="shrink-0" />
+                  </div>
                 </li>
               ))}
             </ul>
@@ -1956,6 +2211,12 @@ function LoginPage({ auth }) {
 
 // ========== MAIN APP ==========
 export default function App() {
+  // Demo mode first: it is the only route into the interface without
+  // credentials, which is what makes a preview deployment reviewable at all.
+  if (isDemoMode) {
+    return <DemoWorkspace />;
+  }
+
   // Checked before anything reaches the Supabase client, so an unconfigured
   // build explains itself instead of erroring.
   if (!isSupabaseConfigured) {
@@ -1965,8 +2226,49 @@ export default function App() {
   return <Workspace />;
 }
 
-function Workspace() {
-  const auth = useSupabaseAuth();
+/**
+ * The real workspace against sample records instead of Supabase. Nothing here
+ * constructs a client or touches the network, so nothing entered in a demo
+ * session can reach a real student record.
+ */
+function DemoWorkspace() {
+  const auth = useDemoAuth();
+  const storeApi = useDemoStore();
+  return <Workspace demoAuth={auth} demoStore={storeApi} />;
+}
+
+/**
+ * Says, on every screen, that these records are not real and are not saved.
+ * A demo that looks exactly like the product is not honest about being a demo,
+ * so this is deliberately not dismissible. The link out is only offered when
+ * the address can actually leave demo mode - a build with demo mode baked in
+ * has nowhere to go, and a dead link would be worse than none.
+ */
+function DemoBanner() {
+  const exitHref = demoExitHref();
+  return (
+    <div className="border-b border-warning/30 bg-warning-soft px-4 py-2" role="status">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs font-medium sm:justify-start">
+        <FlaskConical className="size-3.5 shrink-0 text-warning" strokeWidth={2.2} aria-hidden />
+        <span>Demo data — sample students, nothing is saved.</span>
+        {exitHref && (
+          <a href={exitHref} className="underline underline-offset-2 hover:no-underline">
+            Leave demo
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Workspace({ demoAuth = null, demoStore = null }) {
+  // Both hooks are called even in demo mode, because hooks cannot be called
+  // conditionally. useSupabaseAuth resolves to signed-out when there is no
+  // client, and handing useSupabaseStore a null userId is the same "nothing to
+  // load yet" path it already takes before sign-in.
+  const liveAuth = useSupabaseAuth();
+  const auth = demoAuth ?? liveAuth;
+  const demo = Boolean(demoAuth);
   const [activeTab, setActiveTab] = useState("dashboard");
   const { isDark, toggleTheme } = useTheme();
   const toast = useToast();
@@ -1978,13 +2280,98 @@ function Workspace() {
     });
   }, [toast]);
 
+  const liveStore = useSupabaseStore({
+    userId: demo ? null : auth.user?.id ?? null,
+    organization: auth.organization,
+    onError: handleStoreError,
+  });
   const { store, setStore, replaceStore, loading: storeLoading, saving, error: storeError } =
-    useSupabaseStore({
-      userId: auth.user?.id ?? null,
-      organization: auth.organization,
-      onError: handleStoreError,
-    });
+    demoStore ?? liveStore;
   const [showSearch, setShowSearch] = useState(false);
+  const [reportStudentId, setReportStudentId] = useState(null);
+  const [focusGoalId, setFocusGoalId] = useState(null);
+
+  // The caseload board sends a teacher straight to the thing it just told them
+  // to do, rather than making them go and find the goal themselves. Declared up
+  // here with the other hooks: the sign-in early returns below would otherwise
+  // make these conditional.
+  const openGoal = useCallback(goalId => {
+    setFocusGoalId(goalId);
+    setActiveTab("goals");
+  }, []);
+
+  const logForGoal = useCallback(goalId => {
+    setFocusGoalId(goalId);
+    setActiveTab("progress");
+  }, []);
+
+  const [captureOpen, setCaptureOpen] = useState(false);
+
+  // How many students the board is actually asking about, by the same ranking
+  // the board itself uses - the dock and the board must not disagree about who
+  // is owed a check this week.
+  const captureAttentionCount = useMemo(
+    () => analyzeCaseload({ students: store.students, goals: store.goals, logs: store.logs }).studentsAffected,
+    [store.students, store.goals, store.logs]
+  );
+
+  /**
+   * Persists an observation captured in the quick-capture sheet.
+   *
+   * This deliberately mirrors ProgressView's handleAddLog: the same parse, the
+   * same canonical score on the goal's own scale, the same untouched raw text
+   * beside it. Two capture paths that recorded one goal differently would be a
+   * data-integrity bug wearing the costume of a style difference.
+   */
+  const handleQuickCaptureSave = useCallback((payload) => {
+    const goal = store.goals.find(g => g.id === payload.goalId);
+    if (!goal) return;
+
+    const type = goal.measurementType ?? inferMeasurementType({
+      targetDescription: goal.target,
+      baselineDescription: goal.baseline,
+      metricUnit: goal.metric,
+    });
+    const config = normalizeGoalConfig({ ...defaultConfigFor(type), ...(goal.measurementConfig ?? {}) });
+    const parsed = parseMeasurement(payload.rawValue, type, config);
+
+    if (!parsed?.ok) {
+      toast.error("That doesn't match how this goal is measured", {
+        description: parsed?.error ?? `This goal is measured as ${measurementMeta(type).label.toLowerCase()}.`,
+      });
+      return;
+    }
+
+    const newLog = {
+      id: uid(),
+      goalId: goal.id,
+      dateISO: payload.dateISO,
+      // Canonical value on the goal's own scale - percent correct for a trials
+      // goal, so 4 of 5 and 7 of 10 stay comparable.
+      score: String(roundTo(parsed.score, 4)),
+      rawValue: payload.rawValue,
+      measurementType: type,
+      context: payload.context,
+      evidenceNote: payload.evidenceNote,
+      notes: payload.notes,
+      accommodationsUsed: payload.accommodations.split(",").map(item => item.trim()).filter(Boolean),
+    };
+
+    setStore(prev => ({
+      ...prev,
+      lastUpdated: createTimestamp(),
+      logs: [newLog, ...prev.logs],
+    }));
+
+    const student = store.students.find(s => s.id === goal.studentId);
+    if (student) {
+      triggerNotifications.progressLogAdded(student.name, goal.area, parsed.display);
+    }
+
+    toast.success(`Logged ${parsed.display}`, {
+      description: `${student?.name ?? "The student"} - ${goal.area}`,
+    });
+  }, [store.goals, store.students, setStore, toast]);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
   const lastUpdatedLabel = store.lastUpdated ? formatTimestamp(store.lastUpdated) : "Awaiting first sync";
@@ -2069,6 +2456,8 @@ function Workspace() {
       run: () => setActiveTab("students"), priority: 6 },
     { id: "log-progress", label: "Log progress", icon: Plus, keywords: "new entry record score data",
       run: () => setActiveTab("progress"), priority: 6 },
+    { id: "goto-attention", label: "Go to Attention", icon: Target, keywords: "triage caseload risk overdue who needs attention monitor",
+      run: () => setActiveTab("attention"), priority: 5 },
     { id: "print-report", label: "Print progress report", icon: Printer, keywords: "pdf export meeting paper",
       run: () => window.print(), priority: 3 },
     { id: "export-data", label: "Export all data (JSON)", icon: Download, keywords: "backup download save",
@@ -2101,6 +2490,8 @@ function Workspace() {
     <div className="app-canvas relative min-h-screen">
       <div className="relative z-10 flex min-h-screen flex-col">
         <OfflineIndicator />
+
+        {demo && <DemoBanner />}
 
         <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-xl">
           <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
@@ -2282,6 +2673,12 @@ function Workspace() {
                     Dashboard
                   </TabsTrigger>
                   <TabsTrigger
+                    value="attention"
+                  >
+                    <Target strokeWidth={2.2} />
+                    Attention
+                  </TabsTrigger>
+                  <TabsTrigger
                     value="students"
                   >
                     <Users strokeWidth={2.2} />
@@ -2305,20 +2702,34 @@ function Workspace() {
                   {storeLoading ? (
                     <WorkspaceSkeleton />
                   ) : (
-                    <Dashboard store={store} stats={stats} />
+                    <Dashboard store={store} stats={stats} onOpenReport={setReportStudentId} />
                   )}
                 </TabsContent>
 
+                <TabsContent value="attention">
+                  <CaseloadTriage
+                    store={store}
+                    onLogProgress={logForGoal}
+                    onOpenGoal={openGoal}
+                    onOpenReport={setReportStudentId}
+                  />
+                </TabsContent>
+
                 <TabsContent value="students">
-                  <StudentsView store={store} setStore={setStore} />
+                  <StudentsView store={store} setStore={setStore} onOpenReport={setReportStudentId} />
                 </TabsContent>
 
                 <TabsContent value="goals">
-                  <GoalsView store={store} setStore={setStore} />
+                  <GoalsView
+                    store={store}
+                    setStore={setStore}
+                    onOpenReport={setReportStudentId}
+                    initialGoalId={focusGoalId}
+                  />
                 </TabsContent>
 
                 <TabsContent value="progress">
-                  <ProgressView store={store} setStore={setStore} />
+                  <ProgressView store={store} setStore={setStore} initialGoalId={focusGoalId} />
                 </TabsContent>
               </Tabs>
             </div>
@@ -2366,11 +2777,33 @@ function Workspace() {
           </section>
         </main>
 
+        {/* The one control a teacher reaches for standing up, mid-lesson. */}
+        <CaptureDock onOpen={() => setCaptureOpen(true)} attentionCount={captureAttentionCount} />
+
         <CommandPalette
           open={showSearch}
           onClose={() => setShowSearch(false)}
           store={store}
           commands={commands}
+        />
+
+        {reportStudentId && (
+          <ProgressReportDialog
+            student={store.students.find(s => s.id === reportStudentId)}
+            store={store}
+            onClose={() => setReportStudentId(null)}
+          />
+        )}
+
+        <QuickCapture
+          open={captureOpen}
+          onOpenChange={setCaptureOpen}
+          students={store.students}
+          goals={store.goals}
+          logs={store.logs}
+          initialGoalId={focusGoalId}
+          onSave={handleQuickCaptureSave}
+          busy={saving}
         />
       </div>
     </div>

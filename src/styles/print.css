@@ -143,3 +143,147 @@
 .print-header {
   display: none;
 }
+
+/* --------------------------------------------------------------------------
+   The progress report.
+
+   The block above hides every dialog when printing, which is right for pickers
+   and forms and wrong for the one dialog whose whole purpose is to reach paper.
+   The report renders into its own portal on <body> and sets `report-printing`
+   on the body while it is open, so it can survive that rule and hide the app
+   behind it instead.
+   -------------------------------------------------------------------------- */
+@media print {
+  body.report-printing #root {
+    display: none !important;
+  }
+
+  /* More specific than the `[role="dialog"]` rule above, so it wins. */
+  body.report-printing .report-sheet[role="dialog"] {
+    display: block !important;
+  }
+
+  body.report-printing .report-portal {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    padding: 0 !important;
+    backdrop-filter: none !important;
+  }
+
+  body.report-printing .report-sheet {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* A data table is the evidence for the claim above it, so it has to stay
+     legible and keep its own borders on paper. */
+  body.report-printing table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  body.report-printing th,
+  body.report-printing td {
+    border: 1px solid #9a9a9a !important;
+    padding: 1.2mm 1.6mm !important;
+    font-size: 8.5pt !important;
+    line-height: 1.35 !important;
+    vertical-align: top !important;
+  }
+
+  body.report-printing thead {
+    display: table-header-group;
+  }
+
+  body.report-printing .report-goal {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Identity marks on paper.
+
+   The status spine and the chart's line colours carry meaning with colour, and
+   a school printer is usually monochrome. Nothing here invents information: the
+   spine becomes a plain ink rule (present or absent) and the report already
+   spells the status out in words beside it, so the greyscale page stays true.
+   -------------------------------------------------------------------------- */
+@media print {
+  /* A 3px colour rule prints as a muddy grey, so it becomes ink. */
+  .spine::before {
+    background: #000 !important;
+  }
+
+  /* Display numerals are the argument of a report row; keep them black and
+     at a size that survives a photocopier. */
+  .stat-value {
+    color: #000 !important;
+  }
+  .stat-label {
+    color: #3a3a3a !important;
+  }
+
+  /* Charts are authored with design-token colours as SVG presentation
+     attributes, and CSS wins over presentation attributes - so the lines can be
+     separated by weight and dash pattern here instead of collapsing into one
+     indistinguishable grey. The line classes are set on the recharts <Line>
+     elements in src/components/progress/ProgressVisuals.jsx. */
+  /* The class names sit on recharts' wrapper <g> elements, not on the drawn
+     paths, so each rule has to reach the leaf that actually carries the stroke
+     or fill. (Verified against the rendered DOM: without the descendant
+     selector the token colours survive to paper.) */
+  .chart-line-aim .recharts-line-curve {
+    stroke: #8a8a8a !important;
+    stroke-width: 1.4 !important;
+  }
+  .chart-line-trend .recharts-line-curve {
+    stroke: #5a5a5a !important;
+    stroke-width: 1.8 !important;
+  }
+  .chart-line-recorded .recharts-line-curve {
+    stroke: #000 !important;
+    stroke-width: 2.2 !important;
+  }
+  .chart-dot {
+    fill: #000 !important;
+    stroke: #000 !important;
+  }
+  /* The inline key under a chart is plain SVG, not a recharts curve, so it
+     needs its own rule or its swatches stay in screen colour on paper and
+     compete with the data. */
+  .chart-line line {
+    stroke: #4a4a4a !important;
+  }
+  /* The corridor between baseline and target is the goal's aim made visible;
+     as a pale grey band it still reads as a band, and it is the only thing on
+     the page using that fill. */
+  .chart-band .recharts-area-area {
+    fill: #ededed !important;
+    fill-opacity: 1 !important;
+    opacity: 1 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .chart-label {
+    fill: #333 !important;
+  }
+
+  /* The report's callout is a left rule plus a tint on screen; on paper the
+     tint is a grey wash that costs toner, so only the rule stays. */
+  .doc-callout {
+    background: transparent !important;
+    border-left-color: #000 !important;
+    padding-left: 4mm !important;
+  }
+}

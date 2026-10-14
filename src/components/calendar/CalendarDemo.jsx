@@ -263,7 +263,7 @@ export default function CalendarDemo() {
             </CardHeader>
             <CardContent>
               <ul className="text-sm text-gray-700 space-y-1">
-                <li>• Horizontal timeline showing student's journey</li>
+                <li>• Horizontal timeline showing student&apos;s journey</li>
                 <li>• Milestones automatically detected at 50%, 75%, and 90%</li>
                 <li>• Zoom in/out to see more or less detail</li>
                 <li>• Filter by event type (Goals, Progress, Milestones)</li>

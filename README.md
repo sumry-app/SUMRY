@@ -10,24 +10,25 @@ SUMRY is a comprehensive, enterprise-grade web application designed for special 
 
 ---
 
-## ⚠️ Current status: migration in progress
+## ✅ Current status: Supabase-connected
 
-The Supabase backend is provisioned and a complete service layer exists under
-`src/services/`, **but the UI is not connected to it yet.** `App.jsx` still
-persists data to browser `localStorage` (via `usePersistentStore`) and uses a
-local `sumry_users_v1` login scheme rather than Supabase Auth.
+The UI is connected to Supabase. Since commit `d39c368` (`feat: write records
+through Supabase instead of localStorage`), `App.jsx` reads and writes through
+`useSupabaseStore`, which applies each change optimistically to local state and
+rolls it back (with an error toast) if the database write fails. Sign-in uses
+`useSupabaseAuth`, a Supabase Auth session, rather than the old `sumry_users_v1`
+localStorage login.
 
 Practical consequences today:
 
-- Data is stored per-browser. It is not synced across devices, not shared
-  between users, and not backed up server-side.
-- Nothing in `src/lib/supabase.js` or the `supabase*.js` services is reachable
-  from the app entry point, so it is tree-shaken out of the production bundle.
-- The schema, Row Level Security policies and storage bucket described below
-  are real and applied — they are simply not exercised by the UI yet.
+- Data lives in Postgres and is scoped by Row Level Security, so it syncs
+  across devices and is backed up server-side.
+- `src/lib/supabase.js` and the `supabase*.js` services are reachable from the
+  app entry point.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required for the app to
+  load data; without them it renders a configuration screen instead.
 
-Connecting the UI to the service layer is the main outstanding task. Everything
-below describes the intended and already-implemented backend architecture.
+Everything below describes the backend architecture as implemented.
 
 ---
 

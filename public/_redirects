@@ -1,0 +1,7 @@
+# Cloudflare Pages routing.
+#
+# The app has no server and no client-side router, so every path should resolve
+# to the single entry document rather than a host 404 page. The status of 200
+# (not 301) keeps the requested URL in the address bar, which matters as soon as
+# deep links are added on top of the tab state in App.jsx.
+/*    /index.html   200

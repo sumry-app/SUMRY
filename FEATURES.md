@@ -80,32 +80,29 @@ SUMRY has been transformed into the most advanced, AI-powered IEP management pla
 - Expected completion dates
 
 **Why It's Unique**:
-- Uses machine learning algorithms for predictions
+- Uses simple statistical trend analysis (linear regression), not machine learning
 - Considers historical patterns
 - Provides confidence levels (e.g., "85% confidence")
 - Actionable recommendations, not just data
 
 ---
 
-### 4. **Real OpenAI GPT-4 Integration** 🧠⭐⭐⭐
-**Location**: Backend API
+### 4. **Template-Based Goal Assistant** 🧠⭐
+**Location**: In-app AI goal assistant
 
 **What It Does**:
-- Generates research-based IEP goals
-- Creates measurable objectives
-- Suggests appropriate accommodations
-- Provides progress monitoring strategies
-- Cites evidence-based practices
+- Fills in a goal from a hardcoded table of IEP goal templates
+- Covers Reading, Math, Writing and Behavior, with three focus areas each
+- Falls back to a generic "improve <focus area>" wording for anything else
+- Returns baseline, target and metric values from the same template
 
 **Goal Generation Includes**:
-- SMART-formatted goals
-- Baseline and target values
-- Appropriate metrics
-- Accommodation suggestions
-- Monitoring strategies
-- Research citations
+- SMART-style goal text, baseline and target values, and a metric
+- No network calls: there is no OpenAI or other AI provider integrated, and no
+  `fetch()` anywhere in `src/` — the assistant just waits on a `setTimeout`
+  before returning the chosen template
 
-**Cost**: ~$0.02 per goal generation
+**Cost**: Free — runs entirely in the browser
 
 ---
 
@@ -334,7 +331,7 @@ SUMRY has been transformed into the most advanced, AI-powered IEP management pla
 - Node.js + Express
 - PostgreSQL database (17 tables)
 - RESTful API (25+ endpoints)
-- OpenAI integration
+- No OpenAI integration — goal generation is template-based (see the AI section above)
 - JWT middleware
 
 ### 17. **Testing Infrastructure** 🧪
@@ -395,7 +392,7 @@ SUMRY has been transformed into the most advanced, AI-powered IEP management pla
 ## 🎯 **What Makes SUMRY Different**
 
 ### **Compared to SpedTrack**:
-✅ Real AI integration (not just templates)
+⚠️ Template-based goal suggestions (no external AI — see the AI section)
 ✅ Voice input for progress logging
 ✅ Predictive analytics
 ✅ Parent portal with transparency

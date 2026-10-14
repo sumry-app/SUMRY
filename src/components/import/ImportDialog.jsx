@@ -714,7 +714,7 @@ export default function ImportDialog({ trigger, onImportComplete }) {
                 <AlertTriangle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-yellow-900">
                   <p className="font-semibold mb-1">Unmapped columns detected</p>
-                  <p>The following columns won't be imported: {unmappedHeaders.join(', ')}</p>
+                  <p>The following columns won&apos;t be imported: {unmappedHeaders.join(', ')}</p>
                 </div>
               </div>
             </CardContent>
@@ -939,7 +939,7 @@ export default function ImportDialog({ trigger, onImportComplete }) {
         </div>
 
         <p className="text-sm text-gray-600 mt-4">
-          Please don't close this window...
+          Please don&apos;t close this window...
         </p>
       </div>
     </div>

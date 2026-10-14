@@ -151,6 +151,91 @@ export function coerceStatus(status) {
   return GOAL_STATUSES.includes(key) ? key : "active";
 }
 
+/* ---------------------------------------------------------- measurements -- */
+
+/**
+ * The seven formats a goal can be measured in. This list is duplicated in the
+ * database as the named check constraints `goals_measurement_type_check` and
+ * `progress_logs_measurement_type_check` (migration 003); an insert outside it
+ * is rejected, so the two must stay in step.
+ */
+export const MEASUREMENT_TYPES = [
+  "percent",
+  "trials",
+  "rate",
+  "duration",
+  "rubric",
+  "frequency",
+  "level",
+];
+
+/**
+ * Anything unrecognised becomes "percent", the format most IEP goals use.
+ * Coercing rather than throwing matters: this runs on every save, and a typo
+ * in a measurement picker should not make the whole goal un-saveable.
+ */
+export function coerceMeasurementType(value) {
+  const key = String(value ?? "").trim().toLowerCase();
+  return MEASUREMENT_TYPES.includes(key) ? key : "percent";
+}
+
+/**
+ * Reads a type out of the free text a goal already carries, so goals written
+ * before measurement types existed are not all stored as bare percentages.
+ * Mirrors the SQL backfill in migration 003 exactly - the two must agree, or a
+ * legacy goal would get one type on save and another on backfill.
+ *
+ * The order matters: "80% on 4 of 5 trials" is a percent goal, and "words
+ * correct per minute" contains the word "minute", so rate is tested before
+ * duration.
+ */
+export function inferMeasurementType(goal) {
+  const target = String(goal?.targetDescription ?? "");
+  const unit = String(goal?.metricUnit ?? "").toLowerCase();
+
+  if (target.includes("%") || unit.includes("%")) return "percent";
+  if (/^\s*\d+(?:\.\d+)?\s+of\s+\d+(?:\.\d+)?\s*$/i.test(target)) return "trials";
+  if (
+    unit.includes("per minute") ||
+    unit.includes("/min") ||
+    unit.includes("wpm") ||
+    unit.includes("words correct")
+  ) {
+    return "rate";
+  }
+  if (unit.includes("minute") || unit.includes("duration")) return "duration";
+  return "percent";
+}
+
+/**
+ * Keeps only the scale settings the JSONB column is documented to hold.
+ * Unknown keys are dropped instead of stored: JSONB accepts anything, and a
+ * config that accumulates shape drift is one later reader cannot trust.
+ * Always returns an object, never null/undefined, so `goal.measurementConfig`
+ * is safe to read directly.
+ */
+export function normalizeMeasurementConfig(cfg) {
+  const out = {};
+  if (!cfg || typeof cfg !== "object" || Array.isArray(cfg)) return out;
+
+  for (const key of ["trialTotal", "rubricScale"]) {
+    const raw = cfg[key];
+    if (raw === "" || raw === null || raw === undefined) continue;
+    const num = Number(raw);
+    if (Number.isFinite(num)) out[key] = num;
+  }
+
+  for (const key of ["rateUnit", "frequencyUnit"]) {
+    const text = typeof cfg[key] === "string" ? cfg[key].trim() : "";
+    if (text) out[key] = text;
+  }
+
+  const direction = String(cfg.direction ?? "").trim().toLowerCase();
+  if (direction === "increase" || direction === "decrease") out.direction = direction;
+
+  return out;
+}
+
 /* --------------------------------------------------------------- students -- */
 
 export function studentToRow(student, { createdBy, organization } = {}) {
@@ -221,6 +306,22 @@ export function goalToRow(goal, { createdBy } = {}) {
     target_value: target,
     target_description: goal.target ? String(goal.target) : null,
     metric_unit: goal.metric?.trim() || null,
+    // An explicit pick always wins; inference covers goals written before the
+    // measurement picker existed, so a "4 of 5" goal is not saved as a bare
+    // percent.
+    measurement_type: coerceMeasurementType(
+      goal.measurementType ??
+        inferMeasurementType({
+          targetDescription: goal.target,
+          baselineDescription: goal.baseline,
+          metricUnit: goal.metric,
+        })
+    ),
+    measurement_config: normalizeMeasurementConfig(goal.measurementConfig),
+    // start_date/end_date already existed in the schema but were never written
+    // from the UI; the progress report reads them for the service window.
+    start_date: goal.startDate ? String(goal.startDate).slice(0, 10) : null,
+    end_date: goal.targetDate ? String(goal.targetDate).slice(0, 10) : null,
     status: coerceStatus(goal.status),
     ai_generated: Boolean(goal.aiGenerated),
     created_by: createdBy ?? null,
@@ -237,6 +338,18 @@ export function rowToGoal(row) {
     baseline: row.baseline_description ?? (row.baseline_value != null ? String(row.baseline_value) : ""),
     target: row.target_description ?? (row.target_value != null ? String(row.target_value) : ""),
     metric: row.metric_unit ?? "",
+    // Prefer the stored type; rows written before migration 003 have none, so
+    // infer from the same free text the backfill reads.
+    measurementType:
+      row.measurement_type ??
+      inferMeasurementType({
+        targetDescription: row.target_description,
+        baselineDescription: row.baseline_description,
+        metricUnit: row.metric_unit,
+      }),
+    measurementConfig: normalizeMeasurementConfig(row.measurement_config),
+    startDate: row.start_date ?? "",
+    targetDate: row.end_date ?? "",
     status: row.status ?? "active",
     aiGenerated: Boolean(row.ai_generated),
     createdAt: row.created_at ?? undefined,
@@ -269,6 +382,17 @@ export function logToRow(log, { loggedBy } = {}) {
     log_date: String(log.dateISO).slice(0, 10),
     score,
     notes: log.notes?.trim() || null,
+    // The teacher's own words, kept next to the parsed score: the trendline
+    // reads score, the report prints raw_value when it is present.
+    raw_value: log.rawValue?.trim() || null,
+    // A snapshot, not a reference: editing the goal later must not relabel how
+    // earlier data points were measured.
+    measurement_type: log.measurementType ? coerceMeasurementType(log.measurementType) : null,
+    context: log.context?.trim() || null,
+    evidence_note: log.evidenceNote?.trim() || null,
+    accommodations_used: Array.isArray(log.accommodationsUsed)
+      ? log.accommodationsUsed.map(s => String(s).trim()).filter(Boolean)
+      : [],
     logged_by: loggedBy ?? null,
   };
 }
@@ -280,6 +404,12 @@ export function rowToLog(row) {
     dateISO: String(row.log_date).slice(0, 10),
     score: row.score != null ? String(row.score) : "",
     notes: row.notes ?? "",
-    accommodationsUsed: [],
+    // rawValue is null on rows logged before migration 003; the UI falls back
+    // to displaying score rather than inventing wording.
+    rawValue: row.raw_value ?? null,
+    measurementType: row.measurement_type ?? null,
+    context: row.context ?? "",
+    evidenceNote: row.evidence_note ?? "",
+    accommodationsUsed: Array.isArray(row.accommodations_used) ? row.accommodations_used : [],
   };
 }

@@ -254,7 +254,7 @@ export default function StudentTimeline({ student, goals = [], progressLogs = []
               <Circle className="w-16 h-16 text-gray-300 mx-auto mb-4" />
               <p className="text-gray-500">No timeline events to display</p>
               <p className="text-sm text-gray-400 mt-1">
-                Add goals and progress logs to see the student's journey
+                Add goals and progress logs to see the student&apos;s journey
               </p>
             </div>
           ) : (

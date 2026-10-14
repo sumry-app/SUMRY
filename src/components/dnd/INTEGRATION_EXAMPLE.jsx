@@ -192,7 +192,7 @@ export function StudentKanbanBoard({ studentId, studentName }) {
   return (
     <div className="h-full">
       <div className="mb-4">
-        <h1 className="text-2xl font-bold">{studentName}'s Goals</h1>
+        <h1 className="text-2xl font-bold">{studentName}&apos;s Goals</h1>
         <p className="text-gray-600">Manage and track progress</p>
       </div>
 
