@@ -10,6 +10,11 @@ name: Deploy to Cloudflare Pages
 #   VITE_SUPABASE_URL      - Supabase project URL
 #   VITE_SUPABASE_ANON_KEY - Supabase anon/public key
 #
+# The Cloudflare pair is checked before the deploy step, not by it. Until those
+# two secrets exist the job skips the deploy and says so in its summary, because
+# a missing credential is a setup step, not a failing test - and a check that
+# goes red on every pull request is a check people learn to ignore.
+#
 # See DEPLOYMENT.md for the one-time project setup and the dashboard-managed
 # alternative (connecting the repository directly in Cloudflare).
 
@@ -34,6 +39,10 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      # Surfaced to the steps below; never printed.
+      CF_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CF_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -56,16 +65,34 @@ jobs:
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           # Cloudflare serves from the root of the domain. Leaving this unset
           # would also default to "/", but stating it here documents that the
-          # Pages subpath that GitHub Pages needs must NOT leak into this build.
+          # Pages subpath GitHub Pages needs must NOT leak into this build.
           VITE_BASE_PATH: /
         run: npm run build
 
+      - name: Check for Cloudflare credentials
+        id: credentials
+        run: |
+          if [ -z "$CF_API_TOKEN" ] || [ -z "$CF_ACCOUNT_ID" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Cloudflare Pages: not deployed"
+              echo ""
+              echo "The tests and build above passed. \`CLOUDFLARE_API_TOKEN\` and/or"
+              echo "\`CLOUDFLARE_ACCOUNT_ID\` are not set as repository secrets, so there"
+              echo "was no credential to deploy with. See DEPLOYMENT.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to Cloudflare Pages
         id: deploy
+        if: steps.credentials.outputs.ready == 'true'
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4'
           # `pages deploy` (rather than `pages publish`) is the current command.
           command: >-
             pages deploy dist
@@ -74,6 +101,7 @@ jobs:
             ${{ github.event_name == 'pull_request' && '--commit-dirty=true' || '' }}
 
       - name: Summarise the deployment
+        if: steps.credentials.outputs.ready == 'true'
         run: |
           echo "### Cloudflare Pages" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
