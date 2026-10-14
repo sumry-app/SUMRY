@@ -2,23 +2,23 @@
 
 ## Current state (read this first)
 
-SUMRY deploys as a **static Vite/React site on Vercel**. There is no backend
-server to deploy — the old Node/Express `server/` directory has been removed.
+SUMRY deploys as a **static Vite/React site on Vercel or GitHub Pages**. There
+is no backend server to deploy — the old Node/Express `server/` directory has
+been removed.
 
-A Supabase backend has been provisioned and a full service layer exists under
-`src/services/`, **but the UI is not wired to it yet**. As of today `App.jsx`
-still persists everything to browser `localStorage`, which means:
+The UI is wired to Supabase. Since commit `d39c368`, `App.jsx` reads and writes
+through `useSupabaseStore` (optimistic writes, rolled back on failure) and signs
+in through Supabase Auth (`useSupabaseAuth`), so:
 
-- Data lives only in the browser it was entered in — it is not synced,
-  shared between users, or backed up server-side.
-- `src/lib/supabase.js` and the `supabase*.js` services are not yet reachable
-  from the app entry point, so they are tree-shaken out of the production
-  bundle.
-- Consequently the `VITE_SUPABASE_*` variables are not strictly required for
-  the current build to succeed. **Set them anyway** — they become required the
-  moment the UI is connected, and a missing value then fails at load.
+- Data lives in Postgres, scoped by Row Level Security — it syncs across
+  devices and is backed up server-side.
+- `src/lib/supabase.js` and the `supabase*.js` services are reachable from the
+  app entry point.
+- `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are required; without them
+  the app renders a configuration screen instead of data. On GitHub Pages the
+  deploy workflow reads them from repository secrets.
 
-See the "Still to do" section at the end.
+See the "Still to do" section at the end for the remaining work.
 
 ---
 
@@ -126,8 +126,11 @@ Vercel.
 
 - **Netlify** — build `npm run build`, publish `dist`, add an SPA redirect rule
 - **Cloudflare Pages** — build `npm run build`, output `dist`
-- **GitHub Pages** — set `base: '/SUMRY/'` in `vite.config.js`, then
-  `npm run build && gh-pages -d dist`
+- **GitHub Pages** — `.github/workflows/deploy.yml` builds and publishes the
+  site. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` as repository
+  secrets (Settings → Secrets and variables → Actions) and set Pages to deploy
+  from GitHub Actions. The workflow builds with `VITE_BASE_PATH=/SUMRY/`, so
+  asset URLs resolve under `https://<owner>.github.io/SUMRY/`.
 
 Remember to set both `VITE_` variables in whichever host you use.
 
@@ -135,11 +138,6 @@ Remember to set both `VITE_` variables in whichever host you use.
 
 ## Still to do
 
-- **Connect the UI to Supabase** — replace the `localStorage` persistence in
-  `App.jsx` (`usePersistentStore`) and the local `sumry_users_v1` login scheme
-  with the existing `authAPI`/`studentsAPI`/`goalsAPI`/`progressAPI` service
-  layer and real Supabase Auth sessions. Until this is done, the Supabase
-  backend is provisioned but unused.
 - **AI goal generation** — `goalsAPI.generateAI()` currently throws. It needs to
   be reimplemented as a Supabase Edge Function calling the OpenAI API. The old
   server-side implementation is recoverable from git history at

@@ -100,6 +100,22 @@ export function normalizeStoreData(raw) {
         baseline: typeof goal.baseline === "string" ? goal.baseline.trim() : "",
         target: typeof goal.target === "string" ? goal.target.trim() : "",
         metric: typeof goal.metric === "string" && goal.metric.trim() ? goal.metric.trim() : "",
+        // Deliberately left undefined rather than defaulted to "percent": a
+        // goal loaded from an older backup has no type, and goalToRow's
+        // `?? inferMeasurementType(...)` can only read the free text while the
+        // field is unset. A wrong default here would silence that inference.
+        measurementType:
+          typeof goal.measurementType === "string" && goal.measurementType.trim()
+            ? goal.measurementType.trim()
+            : undefined,
+        measurementConfig:
+          goal.measurementConfig &&
+          typeof goal.measurementConfig === "object" &&
+          !Array.isArray(goal.measurementConfig)
+            ? goal.measurementConfig
+            : {},
+        startDate: typeof goal.startDate === "string" ? goal.startDate.trim() : "",
+        targetDate: typeof goal.targetDate === "string" ? goal.targetDate.trim() : "",
         createdAt: typeof goal.createdAt === "string" ? goal.createdAt : normalized.lastUpdated,
         aiGenerated: Boolean(goal.aiGenerated)
       };
@@ -123,7 +139,21 @@ export function normalizeStoreData(raw) {
         dateISO,
         score: typeof log.score === "string" || typeof log.score === "number" ? String(log.score).trim() : "",
         notes: typeof log.notes === "string" ? log.notes.trim() : "",
-        accommodationsUsed: ensureArray(log.accommodationsUsed).map(item => String(item).trim()).filter(Boolean),
+        rawValue: typeof log.rawValue === "string" ? log.rawValue.trim() : "",
+        // Undefined when absent, for the same reason as goals: logToRow stores
+        // NULL for a missing snapshot rather than guessing a type.
+        measurementType:
+          typeof log.measurementType === "string" && log.measurementType.trim()
+            ? log.measurementType.trim()
+            : undefined,
+        context: typeof log.context === "string" ? log.context.trim() : "",
+        evidenceNote: typeof log.evidenceNote === "string" ? log.evidenceNote.trim() : "",
+        // ensureArray's second argument is load-bearing: with the default
+        // (object-only) filtering this silently emptied every string list, so
+        // accommodations were lost on every load and backup restore.
+        accommodationsUsed: ensureArray(log.accommodationsUsed, false)
+          .map(item => String(item).trim())
+          .filter(Boolean),
         evidence: typeof log.evidence === "string" ? log.evidence : undefined
       };
     }).filter(Boolean)

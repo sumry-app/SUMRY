@@ -98,7 +98,7 @@ export default function TemplateManager({
             <h2 className="text-2xl font-bold mb-4">Using Template</h2>
             <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
               <p className="text-green-800 dark:text-green-200">
-                Template "{selectedTemplate.name}" has been selected. You can now use it
+                Template &quot;{selectedTemplate.name}&quot; has been selected. You can now use it
                 in your application by passing the onUseTemplate callback prop to
                 TemplateManager.
               </p>

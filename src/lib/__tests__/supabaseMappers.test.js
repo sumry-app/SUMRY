@@ -17,6 +17,10 @@ import {
   validateLog,
   ensureUuids,
   GOAL_AREAS,
+  MEASUREMENT_TYPES,
+  coerceMeasurementType,
+  inferMeasurementType,
+  normalizeMeasurementConfig,
 } from "../supabaseMappers";
 
 describe("splitName / joinName", () => {
@@ -93,6 +97,77 @@ describe("coerceStatus", () => {
     expect(coerceStatus("ACTIVE")).toBe("active");
     expect(coerceStatus("nonsense")).toBe("active");
     expect(coerceStatus(undefined)).toBe("active");
+  });
+});
+
+describe("measurement types", () => {
+  it("accepts exactly the seven values the database constraint allows", () => {
+    expect(MEASUREMENT_TYPES).toEqual([
+      "percent",
+      "trials",
+      "rate",
+      "duration",
+      "rubric",
+      "frequency",
+      "level",
+    ]);
+    MEASUREMENT_TYPES.forEach(t => expect(coerceMeasurementType(t)).toBe(t));
+  });
+
+  it("coerces an unknown type to percent rather than failing the insert", () => {
+    expect(coerceMeasurementType("probes")).toBe("percent");
+    expect(coerceMeasurementType(undefined)).toBe("percent");
+    expect(coerceMeasurementType("  TRIALS ")).toBe("trials");
+  });
+
+  it("infers trials from the '<n> of <n>' target text", () => {
+    expect(inferMeasurementType({ targetDescription: "4 of 5", metricUnit: "" })).toBe("trials");
+    expect(inferMeasurementType({ targetDescription: "  10 of 12 ", metricUnit: null })).toBe("trials");
+  });
+
+  it("infers percent when either text carries a percent sign", () => {
+    expect(inferMeasurementType({ targetDescription: "85%", metricUnit: "" })).toBe("percent");
+    expect(inferMeasurementType({ targetDescription: "80", metricUnit: "%" })).toBe("percent");
+  });
+
+  it("infers rate from words-per-minute style units", () => {
+    expect(
+      inferMeasurementType({ targetDescription: "72", metricUnit: "72 words correct per minute" })
+    ).toBe("rate");
+    expect(inferMeasurementType({ targetDescription: "72", metricUnit: "WPM" })).toBe("rate");
+  });
+
+  it("infers duration and falls back to percent", () => {
+    expect(inferMeasurementType({ targetDescription: "12", metricUnit: "minutes" })).toBe("duration");
+    expect(inferMeasurementType({ targetDescription: "mastery", metricUnit: "" })).toBe("percent");
+    expect(inferMeasurementType({})).toBe("percent");
+  });
+});
+
+describe("normalizeMeasurementConfig", () => {
+  it("keeps only the documented scale keys", () => {
+    expect(
+      normalizeMeasurementConfig({
+        trialTotal: 5,
+        rateUnit: " WPM ",
+        rubricScale: 4,
+        frequencyUnit: "prompts",
+        direction: "decrease",
+        unknownKey: "dropped",
+      })
+    ).toEqual({
+      trialTotal: 5,
+      rateUnit: "WPM",
+      rubricScale: 4,
+      frequencyUnit: "prompts",
+      direction: "decrease",
+    });
+  });
+
+  it("drops empties and returns {} rather than null/undefined", () => {
+    expect(normalizeMeasurementConfig({ trialTotal: "", rateUnit: "  ", direction: "sideways" })).toEqual({});
+    expect(normalizeMeasurementConfig(null)).toEqual({});
+    expect(normalizeMeasurementConfig(undefined)).toEqual({});
   });
 });
 
@@ -186,6 +261,33 @@ describe("goals", () => {
     expect(goal.metric).toBe("WPM");
     expect(goal.studentId).toBe("s1");
   });
+
+  it("infers a measurement type for a goal saved before the field existed", () => {
+    expect(goalToRow({ ...base, target: "4 of 5", metric: "" }).measurement_type).toBe("trials");
+    expect(goalToRow({ ...base, target: "72", metric: "WPM" }).measurement_type).toBe("rate");
+  });
+
+  it("round-trips the measurement fields and the goal dates", () => {
+    const row = goalToRow({
+      ...base,
+      target: "4 of 5",
+      metric: "",
+      measurementType: "trials",
+      measurementConfig: { trialTotal: 5, direction: "increase" },
+      startDate: "2026-01-15T00:00:00Z",
+      targetDate: "2026-06-01",
+    });
+    expect(row.measurement_type).toBe("trials");
+    expect(row.measurement_config).toEqual({ trialTotal: 5, direction: "increase" });
+    expect(row.start_date).toBe("2026-01-15");
+    expect(row.end_date).toBe("2026-06-01");
+
+    const goal = rowToGoal(row);
+    expect(goal.measurementType).toBe("trials");
+    expect(goal.measurementConfig).toEqual({ trialTotal: 5, direction: "increase" });
+    expect(goal.startDate).toBe("2026-01-15");
+    expect(goal.targetDate).toBe("2026-06-01");
+  });
 });
 
 describe("validateGoal", () => {
@@ -234,6 +336,47 @@ describe("logs", () => {
     expect(log.dateISO).toBe("2026-08-09");
     expect(log.score).toBe("65");
     expect(log.goalId).toBe("g1");
+  });
+
+  it("carries rawValue, context, evidence and accommodations through", () => {
+    const row = logToRow({
+      goalId: "g1",
+      dateISO: "2026-08-09",
+      score: "80",
+      rawValue: " 4 of 5 ",
+      measurementType: "trials",
+      context: " small group, verbal prompt ",
+      evidenceNote: " teacher tally sheet ",
+      accommodationsUsed: [" extended time ", "", "preferential seating"],
+    });
+    expect(row.raw_value).toBe("4 of 5");
+    expect(row.measurement_type).toBe("trials");
+    expect(row.context).toBe("small group, verbal prompt");
+    expect(row.evidence_note).toBe("teacher tally sheet");
+    expect(row.accommodations_used).toEqual(["extended time", "preferential seating"]);
+
+    const log = rowToLog(row);
+    expect(log.rawValue).toBe("4 of 5");
+    expect(log.measurementType).toBe("trials");
+    expect(log.context).toBe("small group, verbal prompt");
+    expect(log.evidenceNote).toBe("teacher tally sheet");
+    expect(log.accommodationsUsed).toEqual(["extended time", "preferential seating"]);
+  });
+
+  it("leaves unrecorded measurement detail null or empty, not invented", () => {
+    const row = logToRow({ goalId: "g1", dateISO: "2026-08-09", score: "65" });
+    expect(row.raw_value).toBeNull();
+    expect(row.measurement_type).toBeNull();
+    expect(row.context).toBeNull();
+    expect(row.evidence_note).toBeNull();
+    expect(row.accommodations_used).toEqual([]);
+
+    const log = rowToLog(row);
+    expect(log.rawValue).toBeNull();
+    expect(log.measurementType).toBeNull();
+    expect(log.context).toBe("");
+    expect(log.evidenceNote).toBe("");
+    expect(log.accommodationsUsed).toEqual([]);
   });
 
   it("validates date and score", () => {

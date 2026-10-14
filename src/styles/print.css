@@ -143,3 +143,70 @@
 .print-header {
   display: none;
 }
+
+/* --------------------------------------------------------------------------
+   The progress report.
+
+   The block above hides every dialog when printing, which is right for pickers
+   and forms and wrong for the one dialog whose whole purpose is to reach paper.
+   The report renders into its own portal on <body> and sets `report-printing`
+   on the body while it is open, so it can survive that rule and hide the app
+   behind it instead.
+   -------------------------------------------------------------------------- */
+@media print {
+  body.report-printing #root {
+    display: none !important;
+  }
+
+  /* More specific than the `[role="dialog"]` rule above, so it wins. */
+  body.report-printing .report-sheet[role="dialog"] {
+    display: block !important;
+  }
+
+  body.report-printing .report-portal {
+    display: block !important;
+    position: static !important;
+    inset: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+    padding: 0 !important;
+    backdrop-filter: none !important;
+  }
+
+  body.report-printing .report-sheet {
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+  }
+
+  /* A data table is the evidence for the claim above it, so it has to stay
+     legible and keep its own borders on paper. */
+  body.report-printing table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  body.report-printing th,
+  body.report-printing td {
+    border: 1px solid #9a9a9a !important;
+    padding: 1.2mm 1.6mm !important;
+    font-size: 8.5pt !important;
+    line-height: 1.35 !important;
+    vertical-align: top !important;
+  }
+
+  body.report-printing thead {
+    display: table-header-group;
+  }
+
+  body.report-printing .report-goal {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}

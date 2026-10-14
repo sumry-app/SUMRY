@@ -320,8 +320,8 @@ function parseDate(value) {
 
   // Try various date formats
   const formats = [
-    /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/, // MM/DD/YYYY or DD/MM/YYYY
-    /^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/,  // YYYY-MM-DD
+    /^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/, // MM/DD/YYYY or DD/MM/YYYY
+    /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/,  // YYYY-MM-DD
   ];
 
   for (const format of formats) {

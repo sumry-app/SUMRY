@@ -223,7 +223,7 @@ function addTitle(worksheet, title, colCount, rowIndex = 0) {
 /**
  * Calculate progress statistics for goals
  */
-function calculateGoalStats(goal, progressLogs) {
+export function calculateGoalStats(goal, progressLogs) {
   const logs = progressLogs.filter(log => log.goal_id === goal.id);
 
   if (logs.length === 0) {
@@ -231,7 +231,8 @@ function calculateGoalStats(goal, progressLogs) {
       logCount: 0,
       avgScore: null,
       latestScore: null,
-      progressPercentage: 0,
+      // String like every other return path, so callers can format it uniformly.
+      progressPercentage: '0',
       trend: 'No Data'
     };
   }

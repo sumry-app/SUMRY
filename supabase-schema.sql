@@ -52,7 +52,7 @@ CREATE TABLE team_members (
   UNIQUE(student_id, user_id)
 );
 
--- IEP Goals table
+-- IEP Goals table (measurement_type/measurement_config added in migration 003)
 CREATE TABLE goals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   student_id UUID REFERENCES students(id) ON DELETE CASCADE,
@@ -63,6 +63,8 @@ CREATE TABLE goals (
   target_value DECIMAL(10,2) NOT NULL,
   target_description TEXT,
   metric_unit VARCHAR(50),
+  measurement_type VARCHAR(32) NOT NULL DEFAULT 'percent',
+  measurement_config JSONB NOT NULL DEFAULT '{}'::jsonb,
   status goal_status DEFAULT 'active',
   start_date DATE,
   end_date DATE,
@@ -70,19 +72,35 @@ CREATE TABLE goals (
   ai_prompt TEXT,
   created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT goals_measurement_type_check CHECK (
+    measurement_type IN (
+      'percent', 'trials', 'rate', 'duration', 'rubric', 'frequency', 'level'
+    )
+  )
 );
 
--- Progress logs table
+-- Progress logs table (measurement columns added in migration 003)
 CREATE TABLE progress_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   goal_id UUID REFERENCES goals(id) ON DELETE CASCADE,
   log_date DATE NOT NULL,
   score DECIMAL(10,2) NOT NULL,
   notes TEXT,
+  raw_value TEXT,
+  measurement_type VARCHAR(32),
+  context TEXT,
+  evidence_note TEXT,
+  accommodations_used TEXT[] NOT NULL DEFAULT '{}',
   logged_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT progress_logs_measurement_type_check CHECK (
+    measurement_type IS NULL
+    OR measurement_type IN (
+      'percent', 'trials', 'rate', 'duration', 'rubric', 'frequency', 'level'
+    )
+  )
 );
 
 -- Accommodations table
@@ -235,6 +253,8 @@ CREATE INDEX idx_goals_student_id ON goals(student_id);
 CREATE INDEX idx_goals_status ON goals(status);
 CREATE INDEX idx_progress_logs_goal_id ON progress_logs(goal_id);
 CREATE INDEX idx_progress_logs_date ON progress_logs(log_date);
+-- (goal_id, log_date): see migration 003
+CREATE INDEX progress_logs_goal_date_idx ON progress_logs(goal_id, log_date);
 CREATE INDEX idx_team_members_student_id ON team_members(student_id);
 CREATE INDEX idx_team_members_user_id ON team_members(user_id);
 CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);

@@ -118,7 +118,7 @@ function deepClone(obj) {
 
   const cloned = {};
   for (const key in obj) {
-    if (obj.hasOwnProperty(key)) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
       cloned[key] = deepClone(obj[key]);
     }
   }
@@ -411,7 +411,7 @@ function handleCascadeDelete(store, entityType, deletedIds) {
   let newStore = { ...store };
 
   switch (entityType) {
-    case ENTITY_TYPES.STUDENTS:
+    case ENTITY_TYPES.STUDENTS: {
       // Delete all goals for deleted students
       newStore.goals = newStore.goals.filter(
         goal => !deletedIds.includes(goal.studentId)
@@ -422,6 +422,7 @@ function handleCascadeDelete(store, entityType, deletedIds) {
         log => goalIds.has(log.goalId)
       );
       break;
+    }
 
     case ENTITY_TYPES.GOALS:
       // Delete all logs for deleted goals
@@ -613,18 +614,20 @@ function applyAssignment(entity, assignment, options) {
     case 'category':
       return { ...entity, category: value };
 
-    case 'tag':
+    case 'tag': {
       // Add tag if not present
       const tags = entity.tags || [];
       if (!tags.includes(value)) {
         return { ...entity, tags: [...tags, value] };
       }
       return entity;
+    }
 
-    case 'removeTag':
+    case 'removeTag': {
       // Remove tag if present
       const currentTags = entity.tags || [];
       return { ...entity, tags: currentTags.filter(tag => tag !== value) };
+    }
 
     default:
       return { ...entity, [assignmentType]: value };

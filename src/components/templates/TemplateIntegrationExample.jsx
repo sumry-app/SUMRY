@@ -43,7 +43,7 @@ function SimpleTemplateExample() {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Click "Browse Templates" to select a template, then see it rendered with
+          Click &quot;Browse Templates&quot; to select a template, then see it rendered with
           sample student data.
         </p>
 
@@ -291,7 +291,7 @@ function FullManagerExample() {
           <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4 mb-4">
             <div className="font-semibold">Template Selected!</div>
             <div className="text-sm mt-1">
-              You selected "{usedTemplate.name}". In a real application, this would
+              You selected &quot;{usedTemplate.name}&quot;. In a real application, this would
               navigate to your goal creation form or populate fields automatically.
             </div>
             <Button
