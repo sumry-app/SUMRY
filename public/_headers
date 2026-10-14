@@ -1,0 +1,27 @@
+# Cloudflare Pages response headers.
+
+# Vite fingerprints every asset filename, so a given URL's bytes never change
+# and can be cached for a year. index.html is the opposite: it is the document
+# that points at the current fingerprints, so it must always be revalidated or
+# users stay pinned to a deploy that no longer exists.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/index.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/sw.js
+  Cache-Control: public, max-age=0, must-revalidate
+
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+
+# Deliberately no Content-Security-Policy. The app talks to a Supabase project
+# whose origin differs per deployment, and a policy written without knowing that
+# origin would either break sign-in or be loose enough to be decoration. Add one
+# once the Supabase origin is fixed and can be listed explicitly.
