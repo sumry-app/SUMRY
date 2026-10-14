@@ -14,7 +14,7 @@ import {
   ChevronRight, Plus, Copy, Bell, Share2, Camera, Clock, Users,
   AlertTriangle, CheckCircle, XCircle, Mail, Printer, BarChart3,
   Sparkles, Globe, Zap, Shield, DollarSign, Wifi, WifiOff,
-  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search, Sun, Moon, Target
+  MessageSquare, FileText, Languages, Video, Award, BookOpen, Filter, LogOut, User, Search, Sun, Moon, Target, FlaskConical
 } from "lucide-react";
 import {
   uid,
@@ -32,6 +32,7 @@ import { EmptyState, EmptyHint } from "@/components/ui/empty-state";
 import { isSupabaseConfigured, supabaseConfigStatus } from "@/lib/supabase";
 import { useSupabaseStore } from "@/hooks/useSupabaseStore";
 import { useSupabaseAuth } from "@/hooks/useSupabaseAuth";
+import { isDemoMode, demoExitHref, useDemoAuth, useDemoStore } from "@/hooks/useDemoData";
 import { useTheme } from "@/hooks/useTheme";
 import { useToast } from "@/components/ui/Toast";
 import { formatRelativeDate, formatShortDate, formatFullDate } from "@/lib/dates";
@@ -41,6 +42,7 @@ import { triggerNotifications } from "@/lib/notificationManager";
 import { CaseloadTriage } from "@/components/triage/CaseloadTriage";
 import { ProgressReportDialog } from "@/components/reports/ProgressReportDialog";
 import { Sparkline, StatusBadge, TrendChart, statusReason } from "@/components/progress/ProgressVisuals";
+import { QuickCapture, CaptureDock } from "@/components/capture/QuickCapture";
 import { analyzeCaseload, analyzeGoal } from "@/lib/progress/analysis";
 import {
   coerceDirectionFallback,
@@ -2209,6 +2211,12 @@ function LoginPage({ auth }) {
 
 // ========== MAIN APP ==========
 export default function App() {
+  // Demo mode first: it is the only route into the interface without
+  // credentials, which is what makes a preview deployment reviewable at all.
+  if (isDemoMode) {
+    return <DemoWorkspace />;
+  }
+
   // Checked before anything reaches the Supabase client, so an unconfigured
   // build explains itself instead of erroring.
   if (!isSupabaseConfigured) {
@@ -2218,8 +2226,49 @@ export default function App() {
   return <Workspace />;
 }
 
-function Workspace() {
-  const auth = useSupabaseAuth();
+/**
+ * The real workspace against sample records instead of Supabase. Nothing here
+ * constructs a client or touches the network, so nothing entered in a demo
+ * session can reach a real student record.
+ */
+function DemoWorkspace() {
+  const auth = useDemoAuth();
+  const storeApi = useDemoStore();
+  return <Workspace demoAuth={auth} demoStore={storeApi} />;
+}
+
+/**
+ * Says, on every screen, that these records are not real and are not saved.
+ * A demo that looks exactly like the product is not honest about being a demo,
+ * so this is deliberately not dismissible. The link out is only offered when
+ * the address can actually leave demo mode - a build with demo mode baked in
+ * has nowhere to go, and a dead link would be worse than none.
+ */
+function DemoBanner() {
+  const exitHref = demoExitHref();
+  return (
+    <div className="border-b border-warning/30 bg-warning-soft px-4 py-2" role="status">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-center gap-x-2 gap-y-1 text-center text-xs font-medium sm:justify-start">
+        <FlaskConical className="size-3.5 shrink-0 text-warning" strokeWidth={2.2} aria-hidden />
+        <span>Demo data — sample students, nothing is saved.</span>
+        {exitHref && (
+          <a href={exitHref} className="underline underline-offset-2 hover:no-underline">
+            Leave demo
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Workspace({ demoAuth = null, demoStore = null }) {
+  // Both hooks are called even in demo mode, because hooks cannot be called
+  // conditionally. useSupabaseAuth resolves to signed-out when there is no
+  // client, and handing useSupabaseStore a null userId is the same "nothing to
+  // load yet" path it already takes before sign-in.
+  const liveAuth = useSupabaseAuth();
+  const auth = demoAuth ?? liveAuth;
+  const demo = Boolean(demoAuth);
   const [activeTab, setActiveTab] = useState("dashboard");
   const { isDark, toggleTheme } = useTheme();
   const toast = useToast();
@@ -2231,12 +2280,13 @@ function Workspace() {
     });
   }, [toast]);
 
+  const liveStore = useSupabaseStore({
+    userId: demo ? null : auth.user?.id ?? null,
+    organization: auth.organization,
+    onError: handleStoreError,
+  });
   const { store, setStore, replaceStore, loading: storeLoading, saving, error: storeError } =
-    useSupabaseStore({
-      userId: auth.user?.id ?? null,
-      organization: auth.organization,
-      onError: handleStoreError,
-    });
+    demoStore ?? liveStore;
   const [showSearch, setShowSearch] = useState(false);
   const [reportStudentId, setReportStudentId] = useState(null);
   const [focusGoalId, setFocusGoalId] = useState(null);
@@ -2254,6 +2304,74 @@ function Workspace() {
     setFocusGoalId(goalId);
     setActiveTab("progress");
   }, []);
+
+  const [captureOpen, setCaptureOpen] = useState(false);
+
+  // How many students the board is actually asking about, by the same ranking
+  // the board itself uses - the dock and the board must not disagree about who
+  // is owed a check this week.
+  const captureAttentionCount = useMemo(
+    () => analyzeCaseload({ students: store.students, goals: store.goals, logs: store.logs }).studentsAffected,
+    [store.students, store.goals, store.logs]
+  );
+
+  /**
+   * Persists an observation captured in the quick-capture sheet.
+   *
+   * This deliberately mirrors ProgressView's handleAddLog: the same parse, the
+   * same canonical score on the goal's own scale, the same untouched raw text
+   * beside it. Two capture paths that recorded one goal differently would be a
+   * data-integrity bug wearing the costume of a style difference.
+   */
+  const handleQuickCaptureSave = useCallback((payload) => {
+    const goal = store.goals.find(g => g.id === payload.goalId);
+    if (!goal) return;
+
+    const type = goal.measurementType ?? inferMeasurementType({
+      targetDescription: goal.target,
+      baselineDescription: goal.baseline,
+      metricUnit: goal.metric,
+    });
+    const config = normalizeGoalConfig({ ...defaultConfigFor(type), ...(goal.measurementConfig ?? {}) });
+    const parsed = parseMeasurement(payload.rawValue, type, config);
+
+    if (!parsed?.ok) {
+      toast.error("That doesn't match how this goal is measured", {
+        description: parsed?.error ?? `This goal is measured as ${measurementMeta(type).label.toLowerCase()}.`,
+      });
+      return;
+    }
+
+    const newLog = {
+      id: uid(),
+      goalId: goal.id,
+      dateISO: payload.dateISO,
+      // Canonical value on the goal's own scale - percent correct for a trials
+      // goal, so 4 of 5 and 7 of 10 stay comparable.
+      score: String(roundTo(parsed.score, 4)),
+      rawValue: payload.rawValue,
+      measurementType: type,
+      context: payload.context,
+      evidenceNote: payload.evidenceNote,
+      notes: payload.notes,
+      accommodationsUsed: payload.accommodations.split(",").map(item => item.trim()).filter(Boolean),
+    };
+
+    setStore(prev => ({
+      ...prev,
+      lastUpdated: createTimestamp(),
+      logs: [newLog, ...prev.logs],
+    }));
+
+    const student = store.students.find(s => s.id === goal.studentId);
+    if (student) {
+      triggerNotifications.progressLogAdded(student.name, goal.area, parsed.display);
+    }
+
+    toast.success(`Logged ${parsed.display}`, {
+      description: `${student?.name ?? "The student"} - ${goal.area}`,
+    });
+  }, [store.goals, store.students, setStore, toast]);
   const stats = useMemo(() => computeStoreStats(store), [store]);
   const onTrackRate = stats.totalGoals ? Math.round((stats.onTrackGoals / stats.totalGoals) * 100) : 0;
   const lastUpdatedLabel = store.lastUpdated ? formatTimestamp(store.lastUpdated) : "Awaiting first sync";
@@ -2372,6 +2490,8 @@ function Workspace() {
     <div className="app-canvas relative min-h-screen">
       <div className="relative z-10 flex min-h-screen flex-col">
         <OfflineIndicator />
+
+        {demo && <DemoBanner />}
 
         <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-xl">
           <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
@@ -2657,6 +2777,9 @@ function Workspace() {
           </section>
         </main>
 
+        {/* The one control a teacher reaches for standing up, mid-lesson. */}
+        <CaptureDock onOpen={() => setCaptureOpen(true)} attentionCount={captureAttentionCount} />
+
         <CommandPalette
           open={showSearch}
           onClose={() => setShowSearch(false)}
@@ -2671,6 +2794,17 @@ function Workspace() {
             onClose={() => setReportStudentId(null)}
           />
         )}
+
+        <QuickCapture
+          open={captureOpen}
+          onOpenChange={setCaptureOpen}
+          students={store.students}
+          goals={store.goals}
+          logs={store.logs}
+          initialGoalId={focusGoalId}
+          onSave={handleQuickCaptureSave}
+          busy={saving}
+        />
       </div>
     </div>
   );

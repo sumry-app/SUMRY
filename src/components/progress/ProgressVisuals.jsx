@@ -1,8 +1,9 @@
 import {
+  Area,
   CartesianGrid,
-  Legend,
+  ComposedChart,
+  LabelList,
   Line,
-  LineChart,
   ReferenceLine,
   ResponsiveContainer,
   Tooltip,
@@ -87,8 +88,31 @@ export function Sparkline({ analysis, width = 84, height = 26, className, title 
   const last = points[points.length - 1];
   const meta = statusMeta(analysis.status);
 
-  const stroke =
-    meta.tone === "green" ? "#16a34a" : meta.tone === "amber" ? "#d97706" : meta.tone === "red" ? "#dc2626" : "#94a3b8";
+  // A coloured trend line is a claim about direction. When the goal has gone
+  // quiet, when there are too few checks, or when no trend line could be
+  // fitted, that claim is not the app's to make: the line and its end dot fall
+  // back to the neutral slate and the label says the data is not sufficient.
+  const trend = Number.isFinite(analysis?.trend) ? analysis.trend : analysis?.slopePerWeek;
+  const neutral =
+    analysis.status === "no-recent-data" ||
+    analysis.status === "insufficient-data" ||
+    !Number.isFinite(trend);
+
+  const stroke = neutral
+    ? "hsl(var(--muted-foreground))"
+    : meta.tone === "green"
+      ? "hsl(var(--success))"
+      : meta.tone === "amber"
+        ? "hsl(var(--warning))"
+        : meta.tone === "red"
+          ? "hsl(var(--destructive))"
+          : "hsl(var(--muted-foreground))";
+
+  const ariaLabel =
+    title ||
+    (neutral
+      ? `${points.length} progress points recorded; not enough data to show a trend`
+      : `${points.length} progress points, ${meta.label}`);
 
   return (
     <svg
@@ -97,7 +121,7 @@ export function Sparkline({ analysis, width = 84, height = 26, className, title 
       viewBox={`0 0 ${width} ${height}`}
       className={cn("shrink-0", className)}
       role="img"
-      aria-label={title || `${points.length} progress points, ${meta.label}`}
+      aria-label={ariaLabel}
     >
       {Number.isFinite(analysis.target) && analysis.target >= min && analysis.target <= max && (
         <line
@@ -105,7 +129,7 @@ export function Sparkline({ analysis, width = 84, height = 26, className, title 
           x2={width - 2}
           y1={y(analysis.target)}
           y2={y(analysis.target)}
-          stroke="#16a34a"
+          stroke="hsl(var(--success))"
           strokeWidth="1"
           strokeDasharray="2 2"
           opacity="0.55"
@@ -117,13 +141,66 @@ export function Sparkline({ analysis, width = 84, height = 26, className, title 
   );
 }
 
+/*
+ * The end-of-line label: a well-made chart names a line where it ends instead
+ * of making the eye travel to a key. Only the last real point of the line is
+ * drawn, so the word sits on the point the line actually reaches.
+ */
+function ChartEndLabel({ x, y, index, lastIndex, labelText }) {
+  if (index !== lastIndex || !Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return (
+    <text
+      x={x}
+      y={y}
+      dx={7}
+      dy={4}
+      textAnchor="start"
+      className="chart-label"
+      style={{ fontSize: 10, fontWeight: 600, fill: "hsl(var(--foreground))" }}
+    >
+      {labelText}
+    </text>
+  );
+}
+
+/* The inline key under the chart. The words, dash patterns and classes match
+   the three lines, so it reads as a caption rather than a separate legend. */
+const TREND_KEY = [
+  {
+    label: "Aim line",
+    className: "chart-line chart-line-aim",
+    stroke: "hsl(var(--muted-foreground))",
+    strokeWidth: 1.5,
+    strokeDasharray: "4 4",
+  },
+  {
+    label: "Trend",
+    className: "chart-line chart-line-trend",
+    stroke: "hsl(var(--accent))",
+    strokeWidth: 2,
+    strokeDasharray: "5 4",
+  },
+  {
+    label: "Recorded",
+    className: "chart-line chart-line-recorded",
+    stroke: "hsl(var(--primary))",
+    strokeWidth: 2.5,
+  },
+];
+
 /**
  * The full trend view: recorded points, the aim line the goal implies, the
  * fitted trend extended to the end date, and the baseline/target reference
  * lines. The aim line is the piece most progress-monitoring charts leave out,
  * and without it a chart cannot answer "is this enough?".
+ *
+ * `animate` defaults to true for the interactive screens. The printable report
+ * passes false, because recharts gates its end-of-line labels on the entry
+ * animation having finished, and entering print media re-lays-out the chart -
+ * which restarts that animation. A printed page could otherwise catch the
+ * recorded line half-drawn with no labels on it at all.
  */
-export function TrendChart({ analysis, height = 260, showLegend = true }) {
+export function TrendChart({ analysis, height = 260, showLegend = true, animate = true }) {
   const series = buildChartSeries(analysis);
   if (series.length === 0) return null;
 
@@ -131,85 +208,178 @@ export function TrendChart({ analysis, height = 260, showLegend = true }) {
   const tick = value =>
     Number.isFinite(value) ? Math.round(value * 10) / 10 : value;
 
+  // The corridor between baseline and target makes the aim a region rather
+  // than a single dashed line. A recharts Area draws a band only when its
+  // dataKey resolves to [low, high], so each point carries that pair.
+  const hasCorridor = Number.isFinite(analysis.baseline) && Number.isFinite(analysis.target);
+  const corridor = hasCorridor
+    ? [Math.min(analysis.baseline, analysis.target), Math.max(analysis.baseline, analysis.target)]
+    : null;
+  const chartData = hasCorridor
+    ? series.map(entry => ({ ...entry, corridor }))
+    : series;
+
+  // The last point with a real value for each line. The recorded line ends at
+  // the last observation; the aim and trend lines run on to the goal's end
+  // date, whose recorded value is deliberately null.
+  const lastIndexFor = key => {
+    for (let index = series.length - 1; index >= 0; index -= 1) {
+      if (Number.isFinite(series[index][key])) return index;
+    }
+    return -1;
+  };
+  const aimLast = lastIndexFor("aim");
+  const trendLast = lastIndexFor("trend");
+  const recordedLast = lastIndexFor("value");
+
+  const axisTick = {
+    fontSize: 11,
+    fill: "hsl(var(--muted-foreground))",
+    style: { fontVariantNumeric: "tabular-nums" },
+  };
+
   return (
-    <ResponsiveContainer width="100%" height={height}>
-      <LineChart data={series} margin={{ top: 8, right: 16, bottom: 4, left: -14 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        {/* A numeric day axis, not a category axis. With categories every point
-            sits one slot from the next, so the gap between the last observation
-            and the goal's end date - which can be months - would be drawn as
-            narrow as a single week and the aim line would look like it jumps. */}
-        <XAxis
-          dataKey="day"
-          type="number"
-          domain={["dataMin", "dataMax"]}
-          tickFormatter={shortDayLabel}
-          stroke="#64748b"
-          tick={{ fontSize: 11 }}
-        />
-        <YAxis stroke="#64748b" tick={{ fontSize: 11 }} tickFormatter={tick} />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: "white",
-            border: "1px solid #e2e8f0",
-            borderRadius: "10px",
-            fontSize: "12px",
-          }}
-          labelFormatter={day => shortDayLabel(day)}
-          formatter={(value, name) => [
-            value === null || value === undefined ? "-" : formatMeasurement(value, analysis.type, config),
-            name,
-          ]}
-        />
-        {showLegend && <Legend wrapperStyle={{ fontSize: "12px" }} />}
-
-        {Number.isFinite(analysis.baseline) && (
-          <ReferenceLine
-            y={analysis.baseline}
-            stroke="#94a3b8"
-            strokeDasharray="4 4"
-            label={{ value: "Baseline", position: "insideTopLeft", fontSize: 10, fill: "#64748b" }}
+    <div className="w-full">
+      <ResponsiveContainer width="100%" height={height}>
+        {/* ComposedChart, not LineChart: recharts only renders Area children
+            inside a ComposedChart, and the corridor needs an Area. */}
+        <ComposedChart data={chartData} margin={{ top: 8, right: 64, bottom: 4, left: -14 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+          {/* A numeric day axis, not a category axis. With categories every point
+              sits one slot from the next, so the gap between the last observation
+              and the goal's end date - which can be months - would be drawn as
+              narrow as a single week and the aim line would look like it jumps. */}
+          <XAxis
+            dataKey="day"
+            type="number"
+            domain={["dataMin", "dataMax"]}
+            tickFormatter={shortDayLabel}
+            stroke="hsl(var(--muted-foreground))"
+            tick={axisTick}
           />
-        )}
-        {Number.isFinite(analysis.target) && (
-          <ReferenceLine
-            y={analysis.target}
-            stroke="#16a34a"
-            strokeDasharray="4 4"
-            label={{ value: "Target", position: "insideBottomLeft", fontSize: 10, fill: "#16a34a" }}
+          <YAxis stroke="hsl(var(--muted-foreground))" tick={axisTick} tickFormatter={tick} />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: "hsl(var(--card))",
+              border: "1px solid hsl(var(--border))",
+              borderRadius: "10px",
+              fontSize: "12px",
+              color: "hsl(var(--foreground))",
+            }}
+            labelStyle={{ color: "hsl(var(--foreground))" }}
+            itemStyle={{ color: "hsl(var(--foreground))" }}
+            labelFormatter={day => shortDayLabel(day)}
+            formatter={(value, name) => [
+              value === null || value === undefined ? "-" : formatMeasurement(value, analysis.type, config),
+              name,
+            ]}
           />
-        )}
 
-        <Line
-          type="linear"
-          dataKey="aim"
-          stroke="#94a3b8"
-          strokeWidth={1.5}
-          dot={false}
-          name="Aim line"
-          connectNulls
-        />
-        <Line
-          type="linear"
-          dataKey="trend"
-          stroke="#6366f1"
-          strokeWidth={2}
-          strokeDasharray="5 4"
-          dot={false}
-          name="Trend"
-          connectNulls
-        />
-        <Line
-          type="linear"
-          dataKey="value"
-          stroke="#2563eb"
-          strokeWidth={2.5}
-          dot={{ r: 4, fill: "#2563eb" }}
-          name="Recorded"
-          connectNulls
-        />
-      </LineChart>
-    </ResponsiveContainer>
+          {/* The corridor first, so it sits behind every line. */}
+          {hasCorridor && (
+            <Area
+              type="linear"
+              dataKey="corridor"
+              stroke="none"
+              fill="hsl(var(--success) / 0.10)"
+              fillOpacity={1}
+              isAnimationActive={false}
+              className="chart-band"
+              activeDot={false}
+              tooltipType="none"
+            />
+          )}
+
+          {Number.isFinite(analysis.baseline) && (
+            <ReferenceLine
+              y={analysis.baseline}
+              stroke="hsl(var(--border))"
+              strokeDasharray="4 4"
+              label={{ value: "Baseline", position: "insideTopLeft", fontSize: 10, fill: "hsl(var(--muted-foreground))" }}
+            />
+          )}
+          {Number.isFinite(analysis.target) && (
+            <ReferenceLine
+              y={analysis.target}
+              stroke="hsl(var(--success))"
+              strokeDasharray="4 4"
+              label={{ value: "Target", position: "insideBottomLeft", fontSize: 10, fill: "hsl(var(--success))" }}
+            />
+          )}
+
+          <Line
+            type="linear"
+            dataKey="aim"
+            stroke="hsl(var(--muted-foreground))"
+            strokeWidth={1.5}
+            dot={false}
+            name="Aim line"
+            connectNulls
+            className="chart-line chart-line-aim"
+            isAnimationActive={animate}
+          >
+            <LabelList
+              dataKey="aim"
+              content={props => <ChartEndLabel {...props} lastIndex={aimLast} labelText="Aim" />}
+            />
+          </Line>
+          <Line
+            type="linear"
+            dataKey="trend"
+            stroke="hsl(var(--accent))"
+            strokeWidth={2}
+            strokeDasharray="5 4"
+            dot={false}
+            name="Trend"
+            connectNulls
+            className="chart-line chart-line-trend"
+            isAnimationActive={animate}
+          >
+            <LabelList
+              dataKey="trend"
+              content={props => <ChartEndLabel {...props} lastIndex={trendLast} labelText="Trend" />}
+            />
+          </Line>
+          <Line
+            type="linear"
+            dataKey="value"
+            stroke="hsl(var(--primary))"
+            strokeWidth={2.5}
+            dot={{ r: 4, className: "chart-dot", fill: "hsl(var(--primary))", stroke: "hsl(var(--primary))" }}
+            name="Recorded"
+            connectNulls
+            className="chart-line chart-line-recorded"
+            isAnimationActive={animate}
+          >
+            <LabelList
+              dataKey="value"
+              content={props => <ChartEndLabel {...props} lastIndex={recordedLast} labelText="Recorded" />}
+            />
+          </Line>
+        </ComposedChart>
+      </ResponsiveContainer>
+      {showLegend && (
+        <ul className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 px-1 text-xs text-muted-foreground">
+          {TREND_KEY.map(item => (
+            <li key={item.label} className="flex items-center gap-1.5">
+              <svg width="22" height="8" viewBox="0 0 22 8" aria-hidden="true" className="shrink-0">
+                <line
+                  x1="1"
+                  y1="4"
+                  x2="21"
+                  y2="4"
+                  stroke={item.stroke}
+                  strokeWidth={item.strokeWidth}
+                  strokeDasharray={item.strokeDasharray}
+                  className={item.className}
+                />
+              </svg>
+              {item.label}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

@@ -20,6 +20,14 @@ export function useSupabaseAuth() {
   const [status, setStatus] = useState("loading"); // loading | signedOut | signedIn
 
   useEffect(() => {
+    // Demo mode and an unconfigured build both mount this hook with no Supabase
+    // client. "Signed out" is the honest answer, and it keeps the hook from
+    // throwing on the way to the configuration screen.
+    if (!supabase) {
+      setStatus("signedOut");
+      return;
+    }
+
     let active = true;
 
     supabase.auth

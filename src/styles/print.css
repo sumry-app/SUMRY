@@ -210,3 +210,80 @@
     break-inside: avoid;
   }
 }
+
+/* --------------------------------------------------------------------------
+   Identity marks on paper.
+
+   The status spine and the chart's line colours carry meaning with colour, and
+   a school printer is usually monochrome. Nothing here invents information: the
+   spine becomes a plain ink rule (present or absent) and the report already
+   spells the status out in words beside it, so the greyscale page stays true.
+   -------------------------------------------------------------------------- */
+@media print {
+  /* A 3px colour rule prints as a muddy grey, so it becomes ink. */
+  .spine::before {
+    background: #000 !important;
+  }
+
+  /* Display numerals are the argument of a report row; keep them black and
+     at a size that survives a photocopier. */
+  .stat-value {
+    color: #000 !important;
+  }
+  .stat-label {
+    color: #3a3a3a !important;
+  }
+
+  /* Charts are authored with design-token colours as SVG presentation
+     attributes, and CSS wins over presentation attributes - so the lines can be
+     separated by weight and dash pattern here instead of collapsing into one
+     indistinguishable grey. The line classes are set on the recharts <Line>
+     elements in src/components/progress/ProgressVisuals.jsx. */
+  /* The class names sit on recharts' wrapper <g> elements, not on the drawn
+     paths, so each rule has to reach the leaf that actually carries the stroke
+     or fill. (Verified against the rendered DOM: without the descendant
+     selector the token colours survive to paper.) */
+  .chart-line-aim .recharts-line-curve {
+    stroke: #8a8a8a !important;
+    stroke-width: 1.4 !important;
+  }
+  .chart-line-trend .recharts-line-curve {
+    stroke: #5a5a5a !important;
+    stroke-width: 1.8 !important;
+  }
+  .chart-line-recorded .recharts-line-curve {
+    stroke: #000 !important;
+    stroke-width: 2.2 !important;
+  }
+  .chart-dot {
+    fill: #000 !important;
+    stroke: #000 !important;
+  }
+  /* The inline key under a chart is plain SVG, not a recharts curve, so it
+     needs its own rule or its swatches stay in screen colour on paper and
+     compete with the data. */
+  .chart-line line {
+    stroke: #4a4a4a !important;
+  }
+  /* The corridor between baseline and target is the goal's aim made visible;
+     as a pale grey band it still reads as a band, and it is the only thing on
+     the page using that fill. */
+  .chart-band .recharts-area-area {
+    fill: #ededed !important;
+    fill-opacity: 1 !important;
+    opacity: 1 !important;
+    print-color-adjust: exact;
+    -webkit-print-color-adjust: exact;
+  }
+  .chart-label {
+    fill: #333 !important;
+  }
+
+  /* The report's callout is a left rule plus a tint on screen; on paper the
+     tint is a grey wash that costs toner, so only the rule stays. */
+  .doc-callout {
+    background: transparent !important;
+    border-left-color: #000 !important;
+    padding-left: 4mm !important;
+  }
+}

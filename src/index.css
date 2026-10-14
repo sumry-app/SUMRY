@@ -271,6 +271,82 @@
   .row-interactive {
     @apply transition-all duration-200 ease-spring hover:-translate-y-0.5 hover:shadow-lifted;
   }
+
+  /* ---- the case-file mark ---------------------------------------------- */
+
+  /* A 3px rule down the left edge of a goal or student record, coloured by
+     status. It is the one mark that answers "how is this doing?" from across a
+     desk, before a single word is read - the thing a table of rows cannot do.
+     Tone comes from data-tone, and the tone vocabulary lives in
+     src/lib/progress/analysis.js so a status is defined in exactly one place. */
+  .spine {
+    position: relative;
+  }
+  .spine::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.6rem;
+    bottom: 0.6rem;
+    width: 3px;
+    border-radius: 999px;
+    background: hsl(var(--border));
+  }
+  .spine[data-tone="green"]::before { background: hsl(var(--success)); }
+  .spine[data-tone="amber"]::before { background: hsl(var(--warning)); }
+  .spine[data-tone="red"]::before { background: hsl(var(--destructive)); }
+  /* No data yet is not a verdict, so it gets no colour at all - a neutral
+     rule, not a red or amber one, or the absence of evidence reads as failure. */
+  .spine[data-tone="slate"]::before { background: hsl(var(--border)); }
+
+  /* A card carries a much larger corner radius than a list row, so the rule
+     needs to start further in or its ends disappear into the curve. */
+  .spine-card::before {
+    top: 1.4rem;
+    bottom: 1.4rem;
+  }
+
+  /* ---- numbers that carry the argument -------------------------------- */
+
+  /* Baseline, latest, target, caseload counts. Fraunces at size, with tabular
+     figures so a column of them aligns and the number reads as the point of
+     the row rather than as body text. */
+  .stat-value {
+    font-family: theme('fontFamily.display');
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    line-height: 1.05;
+  }
+  .stat-label {
+    @apply text-2xs font-semibold uppercase tracking-[0.12em] text-muted-foreground;
+  }
+
+  /* ---- document language ---------------------------------------------- */
+
+  /* The report is a document, not a screen: an ink rule under the masthead, a
+     hairline between a claim and its evidence. */
+  .doc-rule { border-top: 2px solid hsl(var(--foreground)); }
+  .doc-hairline { border-top: 1px solid hsl(var(--border)); }
+  .doc-callout {
+    @apply rounded-r-xl border-l-2 bg-muted/50 px-4 py-3 text-sm leading-relaxed;
+    border-left-color: hsl(var(--warning));
+  }
+
+  /* ---- thumb reach ----------------------------------------------------- */
+
+  /* The capture dock is the one control that has to stay reachable while a
+     teacher is standing in a classroom holding a phone in one hand, so its
+     inset tracks the home indicator rather than a fixed padding value. */
+  .capture-dock {
+    padding-bottom: calc(0.625rem + env(safe-area-inset-bottom, 0px));
+  }
+  /* 44px is the smallest comfortable one-handed target; the numeric keypad in
+     the capture sheet is built from these. */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
 
 @layer utilities {

@@ -4,7 +4,7 @@ import { AlertTriangle, CalendarPlus, ChevronRight, FileText, TrendingUp, Users 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { Sparkline, StatusBadge, statusReason } from "@/components/progress/ProgressVisuals";
+import { Sparkline, StatusBadge, statusDotClass, statusReason } from "@/components/progress/ProgressVisuals";
 import { analyzeCaseload, STATUS_META } from "@/lib/progress/analysis";
 import { formatMeasurement } from "@/lib/progress/measurement";
 import { cn } from "@/lib/utils";
@@ -56,7 +56,14 @@ function GoalRow({ analysis, onLogProgress, onOpenGoal }) {
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-xl px-2.5 py-2.5 transition-colors hover:bg-muted/50">
-      <span className={cn("size-1.5 shrink-0 rounded-full", `bg-${analysis.tone}`)} aria-hidden="true" />
+      {/* statusDotClass, not a `bg-${tone}` template: Tailwind cannot generate a
+          class it never sees in the source, so the interpolated version silently
+          produced bg-green / bg-amber / bg-red - none of which exist - and this
+          dot has been invisible since it was written. */}
+      <span
+        className={cn("size-2 shrink-0 rounded-full", statusDotClass(analysis.status))}
+        aria-hidden="true"
+      />
 
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
@@ -201,7 +208,11 @@ export function CaseloadTriage({ store, onLogProgress, onOpenGoal, onOpenReport 
             const shown = isOpen ? group.visible : group.visible.slice(0, 1);
 
             return (
-              <li key={group.studentId} className="surface overflow-hidden">
+              <li
+                key={group.studentId}
+                className="surface spine spine-card overflow-hidden"
+                data-tone={group.worst?.tone ?? "slate"}
+              >
                 <div className="flex flex-wrap items-center gap-3 px-5 py-4">
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, TrendChart } from "@/components/progress/ProgressVisuals";
 import { useToast } from "@/components/ui/Toast";
-import { analyzeGoal, STATUS_META } from "@/lib/progress/analysis";
+import { analyzeGoal, statusMeta } from "@/lib/progress/analysis";
 import { describeMeasurement, formatMeasurement, formatRecorded } from "@/lib/progress/measurement";
 
 /**
@@ -117,10 +117,12 @@ export function ProgressReportDialog({ student, store, onClose }) {
       >
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-              Individualized Education Program
+            <p className="eyebrow">Individualized Education Program</p>
+            <h2 className="headline mt-1 text-3xl">Progress Report</h2>
+            <p className="mt-2 text-xl font-medium">
+              {student.name}
+              <span className="text-muted-foreground"> · {student.grade || "Not specified"}</span>
             </p>
-            <h2 className="headline mt-1 text-2xl">Progress Report</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Prepared {new Date().toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}
             </p>
@@ -139,35 +141,36 @@ export function ProgressReportDialog({ student, store, onClose }) {
             </Button>
           </div>
         </div>
+        <div className="doc-rule mt-5" />
 
-        <dl className="mt-6 grid gap-x-8 gap-y-3 border-y py-4 sm:grid-cols-2">
-          <div className="flex gap-2 text-sm">
-            <dt className="w-32 shrink-0 font-semibold">Student</dt>
-            <dd>{student.name}</dd>
+        <dl className="mt-4 grid gap-x-10 sm:grid-cols-2">
+          <div className="doc-hairline py-3">
+            <dt className="stat-label">Student</dt>
+            <dd className="mt-1 text-sm">{student.name}</dd>
           </div>
-          <div className="flex gap-2 text-sm">
-            <dt className="w-32 shrink-0 font-semibold">Grade</dt>
-            <dd>{student.grade || "Not specified"}</dd>
+          <div className="doc-hairline py-3">
+            <dt className="stat-label">Grade</dt>
+            <dd className="mt-1 text-sm">{student.grade || "Not specified"}</dd>
           </div>
-          <div className="flex gap-2 text-sm">
-            <dt className="w-32 shrink-0 font-semibold">Classification</dt>
-            <dd>{student.disability || "Not specified"}</dd>
+          <div className="doc-hairline py-3">
+            <dt className="stat-label">Classification</dt>
+            <dd className="mt-1 text-sm">{student.disability || "Not specified"}</dd>
           </div>
-          <div className="flex gap-2 text-sm">
-            <dt className="w-32 shrink-0 font-semibold">Goals reported</dt>
-            <dd>{report.analyses.length}</dd>
+          <div className="doc-hairline py-3">
+            <dt className="stat-label">Goals reported</dt>
+            <dd className="stat-value mt-1 text-lg">{report.analyses.length}</dd>
           </div>
-          <div className="flex gap-2 text-sm">
-            <dt className="w-32 shrink-0 font-semibold">Reporting period</dt>
-            <dd>
+          <div className="doc-hairline py-3">
+            <dt className="stat-label">Reporting period</dt>
+            <dd className="mt-1 text-sm">
               {report.observations === 0
                 ? "No data recorded"
                 : `${dayToText(report.firstDay)} to ${dayToText(report.lastDay)}`}
             </dd>
           </div>
-          <div className="flex gap-2 text-sm">
-            <dt className="w-32 shrink-0 font-semibold">Observations</dt>
-            <dd>{report.observations}</dd>
+          <div className="doc-hairline py-3">
+            <dt className="stat-label">Observations</dt>
+            <dd className="stat-value mt-1 text-lg">{report.observations}</dd>
           </div>
         </dl>
 
@@ -183,11 +186,13 @@ export function ProgressReportDialog({ student, store, onClose }) {
         ) : (
           <ol className="mt-8 space-y-10">
             {report.analyses.map(({ analysis, goal }, index) => (
-              <li key={analysis.goalId} className="report-goal break-inside-avoid">
+              <li
+                key={analysis.goalId}
+                data-tone={statusMeta(analysis.status).tone}
+                className="report-goal spine break-inside-avoid pl-5"
+              >
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-2xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-                    Goal {index + 1}
-                  </span>
+                  <span className="stat-value text-xl">Goal {index + 1}</span>
                   <Badge variant="outline">{analysis.area}</Badge>
                   <Badge variant="secondary">{describeMeasurement(goal)}</Badge>
                   <StatusBadge status={analysis.status} className="ml-auto" />
@@ -195,40 +200,47 @@ export function ProgressReportDialog({ student, store, onClose }) {
 
                 <h3 className="mt-2 text-base font-semibold leading-snug">{goal.description}</h3>
 
-                <div className="mt-3 grid gap-x-8 gap-y-2 text-sm sm:grid-cols-3">
+                <dl className="mt-4 grid gap-x-8 gap-y-4 sm:grid-cols-3">
                   <div>
-                    <span className="text-muted-foreground">Baseline </span>
-                    <span className="font-semibold">{analysis.baselineText || "-"}</span>
+                    <dt className="stat-label">Baseline</dt>
+                    <dd className="stat-value mt-1 text-2xl">{analysis.baselineText || "-"}</dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Most recent </span>
-                    <span className="font-semibold">
-                      {analysis.latest
-                        ? formatMeasurement(analysis.latest.value, analysis.type, analysis.config)
-                        : "-"}
-                    </span>
-                    {analysis.latest && (
-                      <span className="text-muted-foreground"> ({analysis.latest.dateISO})</span>
-                    )}
+                    <dt className="stat-label">Most recent</dt>
+                    <dd className="mt-1">
+                      <span className="stat-value text-2xl">
+                        {analysis.latest
+                          ? formatMeasurement(analysis.latest.value, analysis.type, analysis.config)
+                          : "-"}
+                      </span>
+                      {analysis.latest && (
+                        <span className="ml-2 text-xs text-muted-foreground">({analysis.latest.dateISO})</span>
+                      )}
+                    </dd>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Target </span>
-                    <span className="font-semibold">{analysis.targetText || "-"}</span>
+                    <dt className="stat-label">Target</dt>
+                    <dd className="stat-value mt-1 text-2xl">{analysis.targetText || "-"}</dd>
                   </div>
-                </div>
+                </dl>
 
                 <p className="mt-3 text-sm leading-relaxed">{analysis.explanation}</p>
 
                 {analysis.threeBelowAimLine && (
-                  <p className="mt-2 text-sm font-medium">
+                  <p className="doc-callout mt-3 font-medium">
                     Decision rule: three consecutive checks have fallen below the aim line, which is the point the
                     IEP team is asked to review the goal.
                   </p>
                 )}
 
                 {analysis.dataPoints >= 2 && (
-                  <div className="mt-5 rounded-xl border p-4">
-                    <TrendChart analysis={analysis} height={230} />
+                  <div className="mt-5">
+                    <p className="stat-label">Progress against the aim line</p>
+                    <div className="mt-2 rounded-lg border border-border p-4">
+                      {/* No entry animation: this sheet exists to be printed,
+                          and a chart caught mid-draw prints as a lie. */}
+                      <TrendChart analysis={analysis} height={230} animate={false} />
+                    </div>
                   </div>
                 )}
 
@@ -237,38 +249,45 @@ export function ProgressReportDialog({ student, store, onClose }) {
                     No observations recorded for this goal in the period. Progress cannot be reported.
                   </p>
                 ) : (
-                  <table className="mt-5 w-full border-collapse text-left text-xs">
-                    <thead>
-                      <tr>
-                        <th className="border px-2 py-1.5 font-semibold">Date</th>
-                        <th className="border px-2 py-1.5 font-semibold">Recorded</th>
-                        <th className="border px-2 py-1.5 font-semibold">Setting / conditions</th>
-                        <th className="border px-2 py-1.5 font-semibold">Evidence</th>
-                        <th className="border px-2 py-1.5 font-semibold">Accommodations used</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analysis.points.map(point => (
-                        <tr key={point.log.id}>
-                          <td className="border px-2 py-1.5 align-top whitespace-nowrap">{point.log.dateISO}</td>
-                          <td className="border px-2 py-1.5 align-top font-medium">
-                            {formatRecorded(point.log, goal)}
-                          </td>
-                          <td className="border px-2 py-1.5 align-top">
-                            {point.log.context || "-"}
-                            {point.log.notes ? <div className="mt-1 text-muted-foreground">{point.log.notes}</div> : null}
-                          </td>
-                          <td className="border px-2 py-1.5 align-top">{point.log.evidenceNote || "-"}</td>
-                          <td className="border px-2 py-1.5 align-top">
-                            {point.log.accommodationsUsed?.length ? point.log.accommodationsUsed.join(", ") : "-"}
-                          </td>
+                  <div className="mt-5">
+                    <h4 className="eyebrow">Evidence</h4>
+                    <table className="mt-2 w-full border-collapse text-left text-xs">
+                      <thead>
+                        <tr>
+                          <th className="border-b border-border px-2 py-1.5 font-semibold">Date</th>
+                          <th className="border-b border-border px-2 py-1.5 font-semibold">Recorded</th>
+                          <th className="border-b border-border px-2 py-1.5 font-semibold">Setting / conditions</th>
+                          <th className="border-b border-border px-2 py-1.5 font-semibold">Evidence</th>
+                          <th className="border-b border-border px-2 py-1.5 font-semibold">Accommodations used</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {analysis.points.map(point => (
+                          <tr key={point.log.id}>
+                            <td className="tabular whitespace-nowrap border-b border-border px-2 py-1.5 align-top">
+                              {point.log.dateISO}
+                            </td>
+                            <td className="tabular border-b border-border px-2 py-1.5 align-top font-medium">
+                              {formatRecorded(point.log, goal)}
+                            </td>
+                            <td className="border-b border-border px-2 py-1.5 align-top">
+                              {point.log.context || "-"}
+                              {point.log.notes ? (
+                                <div className="mt-1 text-muted-foreground">{point.log.notes}</div>
+                              ) : null}
+                            </td>
+                            <td className="border-b border-border px-2 py-1.5 align-top">{point.log.evidenceNote || "-"}</td>
+                            <td className="border-b border-border px-2 py-1.5 align-top">
+                              {point.log.accommodationsUsed?.length ? point.log.accommodationsUsed.join(", ") : "-"}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 )}
 
-                <p className="mt-3 text-sm">
+                <p className="doc-hairline mt-5 pt-3 text-sm">
                   <span className="font-semibold">Next step: </span>
                   {analysis.nextAction}
                 </p>
@@ -277,7 +296,7 @@ export function ProgressReportDialog({ student, store, onClose }) {
           </ol>
         )}
 
-        <div className="mt-10 border-t pt-4 text-xs leading-relaxed text-muted-foreground">
+        <div className="doc-rule mt-10 pt-4 text-xs leading-relaxed text-muted-foreground">
           <p>
             Prepared from {report.observations} documented observation{report.observations === 1 ? "" : "s"} recorded
             between {report.observations === 0 ? "no dates" : `${dayToText(report.firstDay)} and ${dayToText(report.lastDay)}`}.
